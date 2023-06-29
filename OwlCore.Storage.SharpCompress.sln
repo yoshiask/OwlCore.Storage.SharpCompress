@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OwlCore.Storage.SharpCompress", "src\OwlCore.Storage.SharpCompress.csproj", "{667B77E0-4BBD-40BE-830D-EAE73B043173}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OwlCore.Storage.SharpCompress.Tests", "tests\OwlCore.Storage.SharpCompress.Tests.csproj", "{EEB02368-C0D7-4B49-87A1-038CF86ADFB5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{667B77E0-4BBD-40BE-830D-EAE73B043173}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{667B77E0-4BBD-40BE-830D-EAE73B043173}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{667B77E0-4BBD-40BE-830D-EAE73B043173}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{667B77E0-4BBD-40BE-830D-EAE73B043173}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEB02368-C0D7-4B49-87A1-038CF86ADFB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEB02368-C0D7-4B49-87A1-038CF86ADFB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEB02368-C0D7-4B49-87A1-038CF86ADFB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEB02368-C0D7-4B49-87A1-038CF86ADFB5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
