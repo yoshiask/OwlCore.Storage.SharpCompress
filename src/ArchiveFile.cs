@@ -30,6 +30,19 @@ public class ArchiveFile : IChildFile
     public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IFolder?>(_parent);
 
-    public Task<Stream> OpenStreamAsync(FileAccess accessMode = FileAccess.Read, CancellationToken cancellationToken = new CancellationToken())
-        => Task.FromResult(_entry.OpenEntryStream());
+    public Task<Stream> OpenStreamAsync(FileAccess accessMode = FileAccess.Read, CancellationToken cancellationToken = default)
+    {
+        if (accessMode == 0 || (int)accessMode > 3)
+            throw new ArgumentOutOfRangeException(nameof(accessMode));
+
+        var stream = _entry.OpenEntryStream();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (accessMode.HasFlag(FileAccess.Read) && !stream.CanRead)
+            throw new NotSupportedException();
+        if (accessMode.HasFlag(FileAccess.Write) && !stream.CanWrite)
+            throw new NotSupportedException();
+
+        return Task.FromResult(stream);
+    }
 }
