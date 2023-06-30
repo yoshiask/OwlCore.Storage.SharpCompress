@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using SharpCompress.Archives;
@@ -13,12 +14,21 @@ public class ArchiveFile : IChildFile
     public string Id { get; }
     public string Name { get; }
 
-    public ArchiveFile(IArchiveEntry entry, IFolder parent, string name)
+    public ArchiveFile(IArchiveEntry entry, ArchiveFolder parent)
+    {
+        _entry = entry;
+        _parent = parent;
+
+        Name = ArchiveFolder.GetName(entry.Key);
+        Id = parent.GetRootId() + ArchiveFolder.ZIP_DIRECTORY_SEPARATOR + Name;
+    }
+    
+    internal ArchiveFile(IArchiveEntry entry, IFolder parent, string name)
         : this(entry, parent, ArchiveFolder.CombinePath(false, parent.Id, name), name)
     {
     }
     
-    public ArchiveFile(IArchiveEntry entry, IFolder parent, string id, string name)
+    internal ArchiveFile(IArchiveEntry entry, IFolder parent, string id, string name)
     {
         _entry = entry;
         _parent = parent;

@@ -16,7 +16,7 @@ public class ArchiveFolder : IModifiableFolder, IChildFolder, IFastGetItem
     /// This is constant no matter the operating system (see 4.4.17.1).
     /// https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
     /// </summary>
-    private const char ZIP_DIRECTORY_SEPARATOR = '/';
+    internal const char ZIP_DIRECTORY_SEPARATOR = '/';
     
     private readonly IWritableArchive _archive;
     private readonly IFolder? _parent;
@@ -136,9 +136,11 @@ public class ArchiveFolder : IModifiableFolder, IChildFolder, IFastGetItem
     public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IFolder?>(_parent);
 
+    internal string GetRootId() => Id[..Id.IndexOf(ZIP_DIRECTORY_SEPARATOR)];
+
     private static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
 
-    private static string GetName(string id)
+    internal static string GetName(string id)
     {
         var trimmedId = id.TrimEnd(ZIP_DIRECTORY_SEPARATOR);
         return trimmedId[(trimmedId.LastIndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
