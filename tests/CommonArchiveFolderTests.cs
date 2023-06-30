@@ -1,16 +1,18 @@
-using OwlCore.Storage.CommonTests;
-using SharpCompress.Archives.Zip;
+﻿using OwlCore.Storage.CommonTests;
+using SharpCompress.Archives;
 
 namespace OwlCore.Storage.SharpCompress.Tests;
 
-[TestClass]
-public class ZipFolderTests : CommonIModifiableFolderTests
+public abstract class CommonArchiveFolderTests : CommonIModifiableFolderTests
 {
     // Required for base class to perform common tests.
+
+    protected abstract IWritableArchive CreateArchive();
+
     public override async Task<IModifiableFolder> CreateModifiableFolderAsync()
     {
-        var archive = ZipArchive.Create();
-        return new ArchiveFolder(archive, "0000test", "test");
+        var archive = CreateArchive();
+        return new ArchiveFolder(archive, $"{archive.Type}_test", "test");
     }
 
     public override async Task<IModifiableFolder> CreateModifiableFolderWithItems(int fileCount, int folderCount)
@@ -29,7 +31,7 @@ public class ZipFolderTests : CommonIModifiableFolderTests
 
         return folder;
     }
-    
+
     public async Task<IModifiableFolder> CreateModifiableFolderWithNestedItems()
     {
         // Create the following directory structure:
