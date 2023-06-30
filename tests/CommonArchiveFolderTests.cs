@@ -1,7 +1,4 @@
-﻿using OwlCore.Storage.CommonTests;
-using SharpCompress.Archives;
-
-namespace OwlCore.Storage.SharpCompress.Tests;
+﻿namespace OwlCore.Storage.SharpCompress.Tests;
 
 public abstract class CommonArchiveFolderTests : CommonIModifiableFolderTests
 {

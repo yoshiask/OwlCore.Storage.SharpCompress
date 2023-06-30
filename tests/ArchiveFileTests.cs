@@ -1,9 +1,4 @@
-﻿using SharpCompress.Archives;
-using SharpCompress.Archives.GZip;
-using SharpCompress.Archives.Tar;
-using SharpCompress.Archives.Zip;
-
-namespace OwlCore.Storage.SharpCompress.Tests;
+﻿namespace OwlCore.Storage.SharpCompress.Tests;
 
 [TestClass]
 public class ZipFileTests : CommonArchiveFileTests
