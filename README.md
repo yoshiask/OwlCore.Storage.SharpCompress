@@ -1,2 +1,2 @@
-# OwlCore.Storage.SharpZipLib
-OwlCore.Storage implementations for SharpZipLib
+# OwlCore.Storage.SharpCompress
+OwlCore.Storage implementations for SharpCompress
