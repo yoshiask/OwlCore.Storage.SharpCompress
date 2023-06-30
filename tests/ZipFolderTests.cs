@@ -4,7 +4,7 @@ using SharpCompress.Archives.Zip;
 namespace OwlCore.Storage.SharpCompress.Tests;
 
 [TestClass]
-public class IFolderTests : CommonIModifiableFolderTests
+public class ZipFolderTests : CommonIModifiableFolderTests
 {
     // Required for base class to perform common tests.
     public override async Task<IModifiableFolder> CreateModifiableFolderAsync()
