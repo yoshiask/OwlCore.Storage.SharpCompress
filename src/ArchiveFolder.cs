@@ -68,6 +68,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
         return Task.FromResult(file);
     }
 
+    protected override ReadOnlyArchiveFolder WrapSubfolder(string name) => new ArchiveFolder(this, name);
+
     /// <summary>
     /// Wraps a <see cref="Stream"/> with the appropriate archive implementation.
     /// </summary>

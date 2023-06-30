@@ -17,9 +17,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem
     /// https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
     /// </summary>
     internal const char ZIP_DIRECTORY_SEPARATOR = '/';
-    
+
     private readonly IFolder? _parent;
-    
+
     public string Id { get; }
     public string Name { get; }
     protected IArchive Archive { get; }
@@ -43,18 +43,18 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem
         bool includeFiles = type.HasFlag(StorableType.File);
         bool includeFolders = type.HasFlag(StorableType.Folder);
 
-        var idInfo = SplitId(Id);
+        var thisKey = GetKey(Id);
 
         foreach (var entry in Archive.Entries)
         {
             // Only look at children of this current folder
-            if (!IsChild(entry.Key, idInfo.key))
+            if (!IsChild(entry.Key, thisKey))
                 continue;
 
             switch (entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR)
             {
                 case true when includeFolders:
-                    yield return new ReadOnlyArchiveFolder(this, GetName(entry.Key));
+                    yield return WrapSubfolder(GetName(entry.Key));
                     break;
                 case false when includeFiles:
                     yield return new ArchiveFile(entry, this, GetName(entry.Key));
@@ -65,17 +65,17 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem
 
     public Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == GetKey(id));
-        if (entry is null)
-            throw new FileNotFoundException($"No storage item with the ID \"{id}\" could be found.");
+        var entry = Archive.Entries.FirstOrDefault(e => e.Key == GetKey(id))
+            ?? throw new FileNotFoundException($"No storage item with the ID \"{id}\" could be found.");
 
         var name = GetName(id);
+
         IStorableChild item;
         if (entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR)
-            item = new ReadOnlyArchiveFolder(this, name);
+            item = WrapSubfolder(name);
         else
             item = new ArchiveFile(entry, this, name);
-        
+
         return Task.FromResult(item);
     }
 
@@ -89,32 +89,19 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem
 
     internal string GetRootId() => Id[..Id.IndexOf(ZIP_DIRECTORY_SEPARATOR)];
 
+    /// <summary>
+    /// Wraps an existing subfolder of the given key.
+    /// </summary>
+    /// <param name="name">The name of the subfolder.</param>
+    /// <returns>A <see cref="ReadOnlyArchiveFolder"/> or <see cref="ArchiveFolder"/>.</returns>
+    protected virtual ReadOnlyArchiveFolder WrapSubfolder(string name) => new(this, name);
+
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
 
     internal static string GetName(string id)
     {
         var trimmedId = id.TrimEnd(ZIP_DIRECTORY_SEPARATOR);
         return trimmedId[(trimmedId.LastIndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
-    }
-
-    private static (string rootId, string key, string path, string name) SplitId(string id)
-    {
-        int rootIdLength = id.IndexOf(ZIP_DIRECTORY_SEPARATOR);
-        if (rootIdLength <= 0)
-            return (id, string.Empty, string.Empty, string.Empty);
-        
-        string rootId = id[..rootIdLength];
-        string key = id[(rootIdLength + 1)..];
-
-        string trimmedKey = key.TrimEnd(ZIP_DIRECTORY_SEPARATOR);
-        int pathLength = trimmedKey.LastIndexOf(ZIP_DIRECTORY_SEPARATOR);
-        if (pathLength <= 0)
-            return (rootId, key, string.Empty, trimmedKey);
-        
-        string path = trimmedKey[..pathLength];
-        string name = trimmedKey[(pathLength + 1)..];
-
-        return (rootId, key, path, name);
     }
 
     internal static string CombinePath(bool leaveTrailingSeparator, params string[] parts)
@@ -125,9 +112,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem
         {
             if (string.IsNullOrEmpty(part))
                 throw new ArgumentException("Cannot combine an empty string in a path.");
-            
+
             sb.Append(part);
-            
+
             if (part[^1] != ZIP_DIRECTORY_SEPARATOR)
                 sb.Append(ZIP_DIRECTORY_SEPARATOR);
         }

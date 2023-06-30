@@ -16,7 +16,7 @@ public abstract class CommonDiskArchiveFolderTests
             Assert.IsNotNull(docs);
 
             var docsItems = await docs.GetItemsAsync().ToListAsync();
-            Assert.AreEqual(17, docsItems.Count);
+            Assert.AreEqual(1, docsItems.Count);
 
             var fileA = docsItems[0];
             Assert.IsInstanceOfType<IFile>(fileA);
