@@ -15,7 +15,7 @@ public abstract class CommonArchiveFileTests : CommonIFileTests
             entryStream.Write(randomData);
         }
 
-        var folder = new ArchiveFolder(archive, $"root_{Guid.NewGuid()}", "root");
+        var folder = new ReadOnlyArchiveFolder(archive, $"root_{Guid.NewGuid()}", "root");
         var file = new ArchiveFile(entry, folder);
 
         return Task.FromResult<IFile>(file);
