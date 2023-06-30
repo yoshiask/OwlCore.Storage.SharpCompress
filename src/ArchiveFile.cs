@@ -14,17 +14,17 @@ public class ArchiveFile : IChildFile
     public string Id { get; }
     public string Name { get; }
 
-    public ArchiveFile(IArchiveEntry entry, ArchiveFolder parent)
+    public ArchiveFile(IArchiveEntry entry, ReadOnlyArchiveFolder parent)
     {
         _entry = entry;
         _parent = parent;
 
-        Name = ArchiveFolder.GetName(entry.Key);
-        Id = parent.GetRootId() + ArchiveFolder.ZIP_DIRECTORY_SEPARATOR + Name;
+        Name = ReadOnlyArchiveFolder.GetName(entry.Key);
+        Id = parent.GetRootId() + ReadOnlyArchiveFolder.ZIP_DIRECTORY_SEPARATOR + Name;
     }
     
     internal ArchiveFile(IArchiveEntry entry, IFolder parent, string name)
-        : this(entry, parent, ArchiveFolder.CombinePath(false, parent.Id, name), name)
+        : this(entry, parent, ReadOnlyArchiveFolder.CombinePath(false, parent.Id, name), name)
     {
     }
     
