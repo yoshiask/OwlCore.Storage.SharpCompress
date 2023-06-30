@@ -9,7 +9,7 @@ using SharpCompress.Archives;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastGetFirstByName
+public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastGetFirstByName, IFastGetItemRecursive
 {
     /// <summary>
     /// The directory separator as defined by the ZIP standard.
@@ -90,6 +90,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
             return await GetItemAsync(Id + name + ZIP_DIRECTORY_SEPARATOR, cancellationToken);
         }
     }
+
+    public Task<IStorableChild> GetItemRecursiveAsync(string id, CancellationToken cancellationToken = default)
+        => GetItemAsync(Id, cancellationToken);
 
     public Task<IFolderWatcher> GetFolderWatcherAsync(CancellationToken cancellationToken = default)
     {
