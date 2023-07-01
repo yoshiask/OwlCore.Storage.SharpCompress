@@ -3,13 +3,18 @@
 [TestClass]
 public abstract class CommonDiskArchiveFolderTests
 {
-    protected abstract IArchive OpenArchive();
+    protected virtual IArchive OpenArchive() => throw new NotImplementedException();
+
+    protected virtual ReadOnlyArchiveFolder CreateFolder()
+    {
+        var archive = OpenArchive();
+        return new(archive, $"Disk{archive.Type}_root", "root");
+    }
 
     [TestMethod]
     public async Task GetItemsAsyncText_FolderWithNestedItems()
     {
-        using var archive = OpenArchive();
-        ReadOnlyArchiveFolder root = new(archive, $"Disk{archive.Type}_root", "root");
+        using var root = CreateFolder();
 
         var docs = await root.GetFirstByNameAsync("docs") as IFolder;
         {

@@ -9,85 +9,101 @@ namespace OwlCore.Storage.SharpCompress;
 
 public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 {
-    protected IWritableArchive WritableArchive => (IWritableArchive)Archive;
-
-    public ArchiveFolder(IWritableArchive archive, string id, string name) : base(archive, id, name)
+    public ArchiveFolder(IArchive archive, string id, string name) : base(archive, id, name)
     {
     }
 
-    protected ArchiveFolder(ArchiveFolder parent, string name) : base(parent, name)
+    public ArchiveFolder(IFile sourceFile) : base(sourceFile)
     {
     }
 
-    public Task DeleteAsync(IStorableChild item, CancellationToken cancellationToken = default)
+    protected ArchiveFolder(ReadOnlyArchiveFolder parent, string name) : base(parent, name)
+    {
+    }
+
+    public async Task DeleteAsync(IStorableChild item, CancellationToken cancellationToken = default)
     {
         var key = GetKey(item.Id);
-        RemoveSubfolder(key);
-
-        return Task.CompletedTask;
+        await RemoveSubfolder(key, cancellationToken);
     }
 
-    public Task<IChildFolder> CreateFolderAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<IChildFolder> CreateFolderAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         var id = Id + name + ZIP_DIRECTORY_SEPARATOR;
         var key = GetKey(id);
 
-        if (GetSubfolders().TryGetValue(key, out var folder))
+        var subfolders = await GetSubfoldersAsync(cancellationToken);
+        if (subfolders.TryGetValue(key, out var folder))
         {
             if (!overwrite)
-                return Task.FromResult(folder);
+                return folder;
 
-            RemoveSubfolder(key);
+            await RemoveSubfolder(key, cancellationToken);
         }
         
-        return Task.FromResult(AddSubfolder(key, name));
+        return await AddSubfolder(key, name, cancellationToken);
     }
 
-    public Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         var id = Id + name;
         var key = GetKey(id);
+        var archive = await OpenWritableArchiveAsync(cancellationToken);
 
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+        var entry = archive.Entries.FirstOrDefault(e => e.Key == key);
         if (entry is not null)
         {
             if (!overwrite && entry.IsDirectory)
                 throw new Exception("Cannot return a folder from CreateFileAsync and overwrite was not specified.");
 
-            WritableArchive.RemoveEntry(entry);
+            archive.RemoveEntry(entry);
         }
 
-        entry ??= WritableArchive.AddEntry(key, new MemoryStream(), false);
-        IChildFile file = new ArchiveFile(entry, this, id, name);
+        entry ??= archive.AddEntry(key, new MemoryStream(), false);
 
-        return Task.FromResult(file);
+        return new ArchiveFile(entry, this, id, name);
     }
 
     protected override ReadOnlyArchiveFolder WrapSubfolder(string name) => new ArchiveFolder(this, name);
 
-    protected void RemoveSubfolder(IArchiveEntry entry)
+    protected async Task RemoveSubfolder(IArchiveEntry entry, CancellationToken cancellationToken = default)
     {
-        WritableArchive.RemoveEntry(entry);
-        GetSubfolders().Remove(entry.Key);
+        var archive = await OpenWritableArchiveAsync(cancellationToken);
+        archive.RemoveEntry(entry);
+
+        var subfolders = await GetSubfoldersAsync(cancellationToken);
+        subfolders.Remove(entry.Key);
     }
 
-    protected void RemoveSubfolder(string key)
+    protected async Task RemoveSubfolder(string key, CancellationToken cancellationToken = default)
     {
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+        var archive = await OpenWritableArchiveAsync(cancellationToken);
+
+        var entry = archive.Entries.FirstOrDefault(e => e.Key == key);
         if (entry is not null)
-            WritableArchive.RemoveEntry(entry);
+            archive.RemoveEntry(entry);
 
-        GetSubfolders().Remove(key);
+        var subfolders = await GetSubfoldersAsync(cancellationToken);
+        subfolders.Remove(key);
     }
 
-    protected IChildFolder AddSubfolder(string key, string name)
+    protected async Task<IChildFolder> AddSubfolder(string key, string name, CancellationToken cancellationToken = default)
     {
-        WritableArchive.AddEntry(key, new MemoryStream(Array.Empty<byte>()), false);
+        var archive = await OpenWritableArchiveAsync(cancellationToken);
+        archive.AddEntry(key, new MemoryStream(), false);
 
         ArchiveFolder folder = new(this, name);
-        GetSubfolders().Add(key, folder);
+
+        var subfolders = await GetSubfoldersAsync(cancellationToken);
+        subfolders.Add(key, folder);
 
         return folder;
+    }
+
+    protected async Task<IWritableArchive> OpenWritableArchiveAsync(CancellationToken cancellationToken = default)
+    {
+        var archive = await OpenArchiveAsync(cancellationToken);
+        return (IWritableArchive)archive;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,7 +10,7 @@ using SharpCompress.Archives;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastGetFirstByName, IFastGetItemRecursive
+public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastGetFirstByName, IFastGetItemRecursive, IDisposable
 {
     /// <summary>
     /// The directory separator as defined by the ZIP standard.
@@ -20,39 +21,52 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
     private readonly string _key;
     private readonly IFolder? _parent;
+    private readonly IFile? _sourceFile;
+    private IArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
 
     public string Id { get; }
     public string Name { get; }
-    protected IArchive Archive { get; }
 
-    public ReadOnlyArchiveFolder(IArchive archive, string id, string name)
+    public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
     {
         _parent = null;
+        _archive = archive;
+    }
 
-        Archive = archive;
+    public ReadOnlyArchiveFolder(IFile sourceFile)
+        : this(sourceFile.Id.Hash(), Path.GetFileNameWithoutExtension(sourceFile.Name))
+    {
+        _sourceFile = sourceFile;
+    }
+
+    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent._archive!, CombinePath(true, parent.Id, name), name)
+    {
+        _parent = parent;
+    }
+
+    protected ReadOnlyArchiveFolder(string id, string name)
+    {
         Name = name;
         Id = EnsureTrailingSeparator(id);
         _key = GetKey(Id);
     }
 
-    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent.Archive, CombinePath(true, parent.Id, name), name)
+    public async IAsyncEnumerable<IStorableChild> GetItemsAsync(StorableType type = StorableType.All, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        _parent = parent;
-    }
+        var archive = await OpenArchiveAsync(cancellationToken);
 
-    public async IAsyncEnumerable<IStorableChild> GetItemsAsync(StorableType type = StorableType.All, CancellationToken cancellationToken = default)
-    {
         if (type.HasFlag(StorableType.Folder))
         {
             // No need to ensure children, GetSubfolders already filters for us
-            foreach (var subfolder in GetSubfolders().Values)
+            var subfolders = await GetSubfoldersAsync(cancellationToken);
+            foreach (var subfolder in subfolders.Values)
                 yield return subfolder;
         }
 
         if (type.HasFlag(StorableType.File))
         {
-            foreach (var entry in Archive.Entries)
+            foreach (var entry in archive.Entries)
             {
                 // Only look at children of this current folder
                 if (!IsChild(entry.Key, _key) || IsDirectory(entry))
@@ -63,28 +77,27 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
         }
     }
 
-    public Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
+    public async Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
         var key = GetKey(id);
-        IArchiveEntry? entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+        var archive = await OpenArchiveAsync(cancellationToken);
+        IArchiveEntry? entry = archive.Entries.FirstOrDefault(e => e.Key == key);
 
         if (entry is null)
         {
             // Not every archive format requires separate entries for each directory
-            if (GetSubfolders().TryGetValue(key, out var subfolder))
-                return Task.FromResult<IStorableChild>(subfolder);
+            var subfolders = await GetSubfoldersAsync(cancellationToken);
+            if (subfolders.TryGetValue(key, out var subfolder))
+                return subfolder;
+
             throw new FileNotFoundException($"No storage item with the ID \"{id}\" could be found.");
         }
 
         var name = GetName(id);
 
-        IStorableChild item;
-        if (IsDirectory(entry))
-            item = WrapSubfolder(name);
-        else
-            item = new ArchiveFile(entry, this, name);
-
-        return Task.FromResult(item);
+        return IsDirectory(entry)
+            ? WrapSubfolder(name)
+            : new ArchiveFile(entry, this, name);
     }
 
     public async Task<IStorableChild> GetFirstByNameAsync(string name, CancellationToken cancellationToken = default)
@@ -119,13 +132,14 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
     /// <returns>A <see cref="ReadOnlyArchiveFolder"/> or <see cref="ArchiveFolder"/>.</returns>
     protected virtual ReadOnlyArchiveFolder WrapSubfolder(string name) => new(this, name);
 
-    protected Dictionary<string, IChildFolder> GetSubfolders()
+    protected async Task<Dictionary<string, IChildFolder>> GetSubfoldersAsync(CancellationToken cancellationToken = default)
     {
         if (_subfolders is null)
         {
             _subfolders = new();
+            var archive = await OpenArchiveAsync(cancellationToken);
 
-            foreach (var entry in Archive.Entries)
+            foreach (var entry in archive.Entries)
             {
                 if (!entry.Key.StartsWith(_key))
                     continue;
@@ -146,6 +160,19 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
         }
 
         return _subfolders!;
+    }
+
+    protected virtual async Task<IArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
+    {
+        if (_archive is null)
+        {
+            if (_sourceFile is null)
+                throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
+
+            _archive = ArchiveFactory.Open(await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken));
+        }
+
+        return _archive;
     }
 
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
@@ -207,5 +234,12 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
         }
 
         return false;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _archive?.Dispose();
+        _archive = null;
     }
 }

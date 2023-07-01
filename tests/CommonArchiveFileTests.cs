@@ -21,7 +21,7 @@ public abstract class CommonArchiveFileTests : CommonIFileTests
         return Task.FromResult<IFile>(file);
     }
 
-    private static byte[] GenerateRandomData(int length)
+    internal static byte[] GenerateRandomData(int length)
     {
         var rand = new Random();
         var b = new byte[length];
