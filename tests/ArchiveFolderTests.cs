@@ -1,7 +1,7 @@
 namespace OwlCore.Storage.SharpCompress.Tests;
 
 [TestClass]
-public class InMemZipFolderTests : CommonArchiveFolderTests
+public class ZipFolderTests : CommonArchiveFolderTests
 {
     protected override IWritableArchive CreateArchive() => ZipArchive.Create();
 }
