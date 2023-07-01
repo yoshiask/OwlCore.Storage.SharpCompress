@@ -18,7 +18,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
     /// </summary>
     internal const char ZIP_DIRECTORY_SEPARATOR = '/';
 
+    private readonly string _key;
     private readonly IFolder? _parent;
+    private Dictionary<string, IChildFolder>? _subfolders;
 
     public string Id { get; }
     public string Name { get; }
@@ -31,6 +33,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
         Archive = archive;
         Name = name;
         Id = EnsureTrailingSeparator(id);
+        _key = GetKey(Id);
     }
 
     protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent.Archive, CombinePath(true, parent.Id, name), name)
@@ -40,38 +43,43 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
     public async IAsyncEnumerable<IStorableChild> GetItemsAsync(StorableType type = StorableType.All, CancellationToken cancellationToken = default)
     {
-        bool includeFiles = type.HasFlag(StorableType.File);
-        bool includeFolders = type.HasFlag(StorableType.Folder);
-
-        var thisKey = GetKey(Id);
-
-        foreach (var entry in Archive.Entries)
+        if (type.HasFlag(StorableType.Folder))
         {
-            // Only look at children of this current folder
-            if (!IsChild(entry.Key, thisKey))
-                continue;
+            // No need to ensure children, GetSubfolders already filters for us
+            foreach (var subfolder in GetSubfolders().Values)
+                yield return subfolder;
+        }
 
-            switch (entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR)
+        if (type.HasFlag(StorableType.File))
+        {
+            foreach (var entry in Archive.Entries)
             {
-                case true when includeFolders:
-                    yield return WrapSubfolder(GetName(entry.Key));
-                    break;
-                case false when includeFiles:
-                    yield return new ArchiveFile(entry, this, GetName(entry.Key));
-                    break;
+                // Only look at children of this current folder
+                if (!IsChild(entry.Key, _key) || IsDirectory(entry))
+                    continue;
+
+                yield return new ArchiveFile(entry, this, GetName(entry.Key));
             }
         }
     }
 
     public Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == GetKey(id))
-            ?? throw new FileNotFoundException($"No storage item with the ID \"{id}\" could be found.");
+        var key = GetKey(id);
+        IArchiveEntry? entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+
+        if (entry is null)
+        {
+            // Not every archive format requires separate entries for each directory
+            if (GetSubfolders().TryGetValue(key, out var subfolder))
+                return Task.FromResult<IStorableChild>(subfolder);
+            throw new FileNotFoundException($"No storage item with the ID \"{id}\" could be found.");
+        }
 
         var name = GetName(id);
 
         IStorableChild item;
-        if (entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR)
+        if (IsDirectory(entry))
             item = WrapSubfolder(name);
         else
             item = new ArchiveFile(entry, this, name);
@@ -111,7 +119,38 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
     /// <returns>A <see cref="ReadOnlyArchiveFolder"/> or <see cref="ArchiveFolder"/>.</returns>
     protected virtual ReadOnlyArchiveFolder WrapSubfolder(string name) => new(this, name);
 
+    protected Dictionary<string, IChildFolder> GetSubfolders()
+    {
+        if (_subfolders is null)
+        {
+            _subfolders = new();
+
+            foreach (var entry in Archive.Entries)
+            {
+                if (!entry.Key.StartsWith(_key))
+                    continue;
+
+                var relativeKey = entry.Key.Remove(0, _key.Length);
+                int subfolderNameLength = relativeKey.IndexOf(ZIP_DIRECTORY_SEPARATOR);
+                if (subfolderNameLength <= 0)
+                    continue;
+
+                var subfolderName = relativeKey[..subfolderNameLength];
+                if (subfolderName == Name)
+                    continue;
+
+                var subfolderKey = _key + subfolderName + ZIP_DIRECTORY_SEPARATOR;
+                if (!_subfolders.ContainsKey(subfolderKey))
+                    _subfolders.Add(subfolderKey, WrapSubfolder(subfolderName));
+            }
+        }
+
+        return _subfolders!;
+    }
+
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
+
+    protected static bool IsDirectory(IArchiveEntry entry) => entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR;
 
     internal static string GetName(string id)
     {

@@ -21,9 +21,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
     public Task DeleteAsync(IStorableChild item, CancellationToken cancellationToken = default)
     {
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == GetKey(item.Id));
-        if (entry is not null)
-            WritableArchive.RemoveEntry(entry);
+        var key = GetKey(item.Id);
+        RemoveSubfolder(key);
 
         return Task.CompletedTask;
     }
@@ -33,19 +32,15 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
         var id = Id + name + ZIP_DIRECTORY_SEPARATOR;
         var key = GetKey(id);
 
-        var entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
-        if (entry is not null)
+        if (GetSubfolders().TryGetValue(key, out var folder))
         {
-            if (!overwrite && !entry.IsDirectory)
-                throw new Exception("Cannot return a file from CreateFolderAsync and overwrite was not specified.");
+            if (!overwrite)
+                return Task.FromResult(folder);
 
-            WritableArchive.RemoveEntry(entry);
+            RemoveSubfolder(key);
         }
-
-        entry ??= WritableArchive.AddEntry(key, new MemoryStream(Array.Empty<byte>()), false);
-        IChildFolder folder = new ArchiveFolder(this, name);
-
-        return Task.FromResult(folder);
+        
+        return Task.FromResult(AddSubfolder(key, name));
     }
 
     public Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
@@ -69,6 +64,31 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
     }
 
     protected override ReadOnlyArchiveFolder WrapSubfolder(string name) => new ArchiveFolder(this, name);
+
+    protected void RemoveSubfolder(IArchiveEntry entry)
+    {
+        WritableArchive.RemoveEntry(entry);
+        GetSubfolders().Remove(entry.Key);
+    }
+
+    protected void RemoveSubfolder(string key)
+    {
+        var entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+        if (entry is not null)
+            WritableArchive.RemoveEntry(entry);
+
+        GetSubfolders().Remove(key);
+    }
+
+    protected IChildFolder AddSubfolder(string key, string name)
+    {
+        WritableArchive.AddEntry(key, new MemoryStream(Array.Empty<byte>()), false);
+
+        ArchiveFolder folder = new(this, name);
+        GetSubfolders().Add(key, folder);
+
+        return folder;
+    }
 
     /// <summary>
     /// Wraps a <see cref="Stream"/> with the appropriate archive implementation.
