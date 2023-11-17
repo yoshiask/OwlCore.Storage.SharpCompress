@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,7 +7,13 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OwlCore.ComponentModel;
 using SharpCompress.Archives;
+using SharpCompress.Archives.GZip;
+using SharpCompress.Compressors;
+using SharpCompress.Compressors.Deflate;
+using SharpCompress.Factories;
+using SharpCompress.Readers;
 
 namespace OwlCore.Storage.SharpCompress;
 
@@ -169,8 +176,41 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
             if (_sourceFile is null)
                 throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
 
-            _archive = ArchiveFactory.Open(await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken));
+            using var archiveStream = await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken);
+
+            Stream rewindableStream = new LazySeekStream(archiveStream);
+            rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
+            rewindableStream.Position = 0;
+
+            if (GZipArchive.IsGZipFile(rewindableStream))
+            {
+                rewindableStream.Position = 0;
+
+                rewindableStream = new GZipStream(rewindableStream, CompressionMode.Decompress);
+                rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
+                rewindableStream = new LazySeekStream(rewindableStream);
+
+                rewindableStream.Position = 0;
+            }
+
+            var options = new ReaderOptions { LeaveStreamOpen = true };
+
+            foreach (var factory in Factory.Factories.OfType<IArchiveFactory>())
+            {
+                rewindableStream.Position = 0;
+                if (factory.IsArchive(rewindableStream, options.Password))
+                {
+                    rewindableStream.Position = 0;
+                    _archive = factory.Open(rewindableStream, options);
+                    break;
+                }
+
+                rewindableStream.Position = 0;
+            }
         }
+
+        if (_archive is null)
+            throw new ArgumentNullException(nameof(_archive));
 
         return _archive;
     }

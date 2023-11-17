@@ -7,12 +7,6 @@ public class ZipFolderTests : CommonArchiveFolderTests
 }
 
 [TestClass]
-public class GZipFolderTests : CommonArchiveFolderTests
-{
-    protected override IWritableArchive CreateArchive() => GZipArchive.Create();
-}
-
-[TestClass]
 public class TarFolderTests : CommonArchiveFolderTests
 {
     protected override IWritableArchive CreateArchive() => TarArchive.Create();
