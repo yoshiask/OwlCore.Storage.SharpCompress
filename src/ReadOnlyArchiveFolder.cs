@@ -87,8 +87,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
     public async Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
         var key = GetKey(id);
-        var archive = await OpenArchiveAsync(cancellationToken);
-        IArchiveEntry? entry = archive.Entries.FirstOrDefault(e => e.Key == key);
+        _archive = await OpenArchiveAsync(cancellationToken);
+
+        IArchiveEntry? entry = _archive.Entries.FirstOrDefault(e => e.Key == key);
 
         if (entry is null)
         {
@@ -144,9 +145,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
         if (_subfolders is null)
         {
             _subfolders = new();
-            var archive = await OpenArchiveAsync(cancellationToken);
+            _archive = await OpenArchiveAsync(cancellationToken);
 
-            foreach (var entry in archive.Entries)
+            foreach (var entry in _archive.Entries)
             {
                 if (!entry.Key.StartsWith(_key))
                     continue;
@@ -176,7 +177,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
             if (_sourceFile is null)
                 throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
 
-            using var archiveStream = await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken);
+            var archiveStream = await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken);
 
             Stream rewindableStream = new LazySeekStream(archiveStream);
             rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
