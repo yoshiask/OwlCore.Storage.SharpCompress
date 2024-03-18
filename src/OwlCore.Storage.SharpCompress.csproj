@@ -38,7 +38,7 @@
   <PropertyGroup>
     <Author>Joshua Askharoun</Author>
     <Authors>$(Author)</Authors>
-    <Version>0.0.1</Version>
+    <Version>0.1.0</Version>
     <Product>OwlCore</Product>
     <DebugType>embedded</DebugType>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -52,6 +52,13 @@
       Reading and writing GZip archives is partially supported with the same limitations as SharpCompress.
     </Description>
     <PackageReleaseNotes>
+      --- 0.1.0 ---
+      [Breaking]
+      Inherits breaking changes from OwlCore.Storage 0.10.0.
+      
+      [Fixes]
+      Contains several fixes around copy, move and create operations.
+      
       --- 0.0.1 ---
       [Fixes]
       Fixed an issue where tar.gz files weren't returning entries
