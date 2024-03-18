@@ -33,7 +33,7 @@ public abstract class CommonDiskArchiveFolderTests
             Assert.IsNotNull(index);
             Assert.AreEqual($"{root.Id}index", index.Id);
 
-            using var indexStream = await index.OpenStreamAsync();
+            using var indexStream = await index.OpenReadAsync();
             using StreamReader reader = new(indexStream);
             string indexText = await reader.ReadToEndAsync();
         }

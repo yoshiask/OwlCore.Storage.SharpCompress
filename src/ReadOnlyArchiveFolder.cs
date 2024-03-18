@@ -17,7 +17,7 @@ using SharpCompress.Readers;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastGetFirstByName, IFastGetItemRecursive, IDisposable
+public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstByName, IGetItemRecursive, IDisposable
 {
     /// <summary>
     /// The directory separator as defined by the ZIP standard.
@@ -61,14 +61,23 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
     public async IAsyncEnumerable<IStorableChild> GetItemsAsync(StorableType type = StorableType.All, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (type == StorableType.None)
+            throw new ArgumentOutOfRangeException(nameof(type), $"{nameof(StorableType)}.{type} is not valid here.");
+
         var archive = await OpenArchiveAsync(cancellationToken);
 
         if (type.HasFlag(StorableType.Folder))
         {
             // No need to ensure children, GetSubfolders already filters for us
             var subfolders = await GetSubfoldersAsync(cancellationToken);
+
             foreach (var subfolder in subfolders.Values)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return subfolder;
+            }
         }
 
         if (type.HasFlag(StorableType.File))
@@ -78,6 +87,8 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
                 // Only look at children of this current folder
                 if (!IsChild(entry.Key, _key) || IsDirectory(entry))
                     continue;
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 yield return new ArchiveFile(entry, this, GetName(entry.Key));
             }
@@ -125,7 +136,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
     public Task<IFolderWatcher> GetFolderWatcherAsync(CancellationToken cancellationToken = default)
     {
-        throw new System.NotImplementedException();
+        throw new NotImplementedException();
     }
 
     public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
@@ -142,42 +153,48 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
     protected async Task<Dictionary<string, IChildFolder>> GetSubfoldersAsync(CancellationToken cancellationToken = default)
     {
-        if (_subfolders is null)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_subfolders is not null)
+            return _subfolders;
+
+        _subfolders = [];
+        _archive = await OpenArchiveAsync(cancellationToken);
+
+        foreach (var entry in _archive.Entries)
         {
-            _subfolders = new();
-            _archive = await OpenArchiveAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var entry in _archive.Entries)
-            {
-                if (!entry.Key.StartsWith(_key))
-                    continue;
+            if (!entry.Key.StartsWith(_key))
+                continue;
 
-                var relativeKey = entry.Key.Remove(0, _key.Length);
-                int subfolderNameLength = relativeKey.IndexOf(ZIP_DIRECTORY_SEPARATOR);
-                if (subfolderNameLength <= 0)
-                    continue;
+            var relativeKey = entry.Key.Remove(0, _key.Length);
+            int subfolderNameLength = relativeKey.IndexOf(ZIP_DIRECTORY_SEPARATOR);
+            if (subfolderNameLength <= 0)
+                continue;
 
-                var subfolderName = relativeKey[..subfolderNameLength];
-                if (subfolderName == Name)
-                    continue;
+            var subfolderName = relativeKey[..subfolderNameLength];
+            if (subfolderName == Name)
+                continue;
 
-                var subfolderKey = _key + subfolderName + ZIP_DIRECTORY_SEPARATOR;
-                if (!_subfolders.ContainsKey(subfolderKey))
-                    _subfolders.Add(subfolderKey, WrapSubfolder(subfolderName));
-            }
+            var subfolderKey = _key + subfolderName + ZIP_DIRECTORY_SEPARATOR;
+            if (!_subfolders.ContainsKey(subfolderKey))
+                _subfolders.Add(subfolderKey, WrapSubfolder(subfolderName));
         }
 
-        return _subfolders!;
+        return _subfolders;
     }
 
     protected virtual async Task<IArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_archive is null)
         {
             if (_sourceFile is null)
                 throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
 
-            var archiveStream = await _sourceFile.OpenStreamAsync(cancellationToken: cancellationToken);
+            var archiveStream = await _sourceFile.OpenStreamAsync(FileAccess.Read, cancellationToken);
 
             Stream rewindableStream = new LazySeekStream(archiveStream);
             rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
@@ -212,6 +229,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IFastGetItem, IFastG
 
         if (_archive is null)
             throw new ArgumentNullException(nameof(_archive));
+
+        
+        cancellationToken.ThrowIfCancellationRequested();
 
         return _archive;
     }

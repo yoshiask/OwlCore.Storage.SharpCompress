@@ -29,6 +29,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
     public async Task<IChildFolder> CreateFolderAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var id = Id + name + ZIP_DIRECTORY_SEPARATOR;
         var key = GetKey(id);
 
@@ -37,15 +39,17 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
         {
             if (!overwrite)
                 return folder;
-
-            await RemoveSubfolder(key, cancellationToken);
         }
-        
+
+        await RemoveSubfolder(key, cancellationToken);
+
         return await AddSubfolder(key, name, cancellationToken);
     }
 
     public async Task<IChildFile> CreateFileAsync(string name, bool overwrite = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var id = Id + name;
         var key = GetKey(id);
         var archive = await OpenWritableArchiveAsync(cancellationToken);
@@ -56,7 +60,11 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
             if (!overwrite && entry.IsDirectory)
                 throw new Exception("Cannot return a folder from CreateFileAsync and overwrite was not specified.");
 
-            archive.RemoveEntry(entry);
+            if (overwrite)
+            {
+                archive.RemoveEntry(entry);
+                entry = null;
+            }
         }
 
         entry ??= archive.AddEntry(key, new MemoryStream(), false);
@@ -77,6 +85,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
     protected async Task RemoveSubfolder(string key, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var archive = await OpenWritableArchiveAsync(cancellationToken);
 
         var entry = archive.Entries.FirstOrDefault(e => e.Key == key);
@@ -89,6 +99,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
     protected async Task<IChildFolder> AddSubfolder(string key, string name, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var archive = await OpenWritableArchiveAsync(cancellationToken);
         archive.AddEntry(key, new MemoryStream(), false);
 
