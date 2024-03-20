@@ -33,15 +33,24 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
         var id = Id + name + ZIP_DIRECTORY_SEPARATOR;
         var key = GetKey(id);
-
         var subfolders = await GetSubfoldersAsync(cancellationToken);
-        if (subfolders.TryGetValue(key, out var folder))
-        {
-            if (!overwrite)
-                return folder;
-        }
-
-        await RemoveSubfolder(key, cancellationToken);
+        
+        // Folder doesn't already exist, simply create it
+        if (!subfolders.TryGetValue(key, out var folder))
+            return await AddSubfolder(key, name, cancellationToken);
+        
+        // Folder already exists and caller doesn't want to overwrite it
+        if (!overwrite)
+            return folder;
+            
+        // Folder already exists and caller wants to overwrite it,
+        // so get the parent and attempt to delete the existing
+        // one before creating a new one.
+        var parent = await folder.GetParentAsync(cancellationToken);
+        if (parent is not IModifiableFolder modifiableParent)
+            throw new IOException($"A folder with the name '{name}' already exists in parent folder " +
+                                  $"'{parent?.Id ?? null}' and is not modifiable.");
+        await modifiableParent.DeleteAsync(folder, cancellationToken);
 
         return await AddSubfolder(key, name, cancellationToken);
     }
@@ -74,25 +83,19 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
 
     protected override ReadOnlyArchiveFolder WrapSubfolder(string name) => new ArchiveFolder(this, name);
 
-    protected async Task RemoveSubfolder(IArchiveEntry entry, CancellationToken cancellationToken = default)
-    {
-        var archive = await OpenWritableArchiveAsync(cancellationToken);
-        archive.RemoveEntry(entry);
-
-        var subfolders = await GetSubfoldersAsync(cancellationToken);
-        subfolders.Remove(entry.Key);
-    }
-
     protected async Task RemoveSubfolder(string key, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
+        
+        // Remove this and all child entries from archive.
+        // Force enumeration with .ToList() since we're modifying the collection.
         var archive = await OpenWritableArchiveAsync(cancellationToken);
+        var entries = archive.Entries.ToList();
+        foreach (var entry in entries)
+            if (entry.Key == key || IsChild(entry.Key, key))
+                archive.RemoveEntry(entry);
 
-        var entry = archive.Entries.FirstOrDefault(e => e.Key == key);
-        if (entry is not null)
-            archive.RemoveEntry(entry);
-
+        // Remove subfolder entry if one exists
         var subfolders = await GetSubfoldersAsync(cancellationToken);
         subfolders.Remove(key);
     }

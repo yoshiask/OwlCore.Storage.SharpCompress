@@ -282,7 +282,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// <param name="parentKey">
     /// The archive key of the parent. Must already have trailing separator removed.
     /// </param>
-    private static bool IsChild(string childKey, string parentKey)
+    protected static bool IsChild(string childKey, string parentKey)
     {
         childKey = childKey.TrimEnd(ZIP_DIRECTORY_SEPARATOR);
         parentKey = parentKey.TrimEnd(ZIP_DIRECTORY_SEPARATOR);
