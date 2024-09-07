@@ -31,14 +31,14 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="SharpCompress" Version="0.36.0" />
-    <PackageReference Include="OwlCore.Storage" Version="0.10.0" />
-    <PackageReference Include="OwlCore.ComponentModel" Version="0.7.0" />
+    <PackageReference Include="OwlCore.Storage" Version="0.12.0" />
+    <PackageReference Include="OwlCore.ComponentModel" Version="0.9.0" />
   </ItemGroup>
 
   <PropertyGroup>
     <Author>Joshua Askharoun</Author>
     <Authors>$(Author)</Authors>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>OwlCore</Product>
     <DebugType>embedded</DebugType>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -52,6 +52,10 @@
       Reading and writing GZip archives is partially supported with the same limitations as SharpCompress.
     </Description>
     <PackageReleaseNotes>
+      --- 0.1.1 ---
+      [Fixes]
+      Inherited fixes from OwlCore.Storage 0.12.0 and OwlCore.ComponentModel 0.9.0.
+
       --- 0.1.0 ---
       [Breaking]
       Inherits breaking changes from OwlCore.Storage 0.10.0.
