@@ -27,10 +27,10 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     internal const char ZIP_DIRECTORY_SEPARATOR = '/';
 
     protected IFile? SourceFile { get; }
-    protected IArchive? Archive { get; private set; }
     
     private readonly string _key;
     private readonly IFolder? _parent;
+    private IArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
 
     public string Id { get; }
@@ -39,7 +39,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
     {
         _parent = null;
-        Archive = archive;
+        _archive = archive;
     }
 
     public ReadOnlyArchiveFolder(IFile sourceFile)
@@ -48,7 +48,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         SourceFile = sourceFile;
     }
 
-    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent.Archive!, CombinePath(true, parent.Id, name), name)
+    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent._archive!, CombinePath(true, parent.Id, name), name)
     {
         _parent = parent;
     }
@@ -99,9 +99,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     public async Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
         var key = GetKey(id);
-        Archive = await OpenArchiveAsync(cancellationToken);
+        _archive = await OpenArchiveAsync(cancellationToken);
 
-        IArchiveEntry? entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
+        IArchiveEntry? entry = _archive.Entries.FirstOrDefault(e => e.Key == key);
 
         if (entry is null)
         {
@@ -141,7 +141,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     }
 
     public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IFolder?>(_parent);
+        => Task.FromResult(_parent);
 
     internal string GetRootId() => Id[..Id.IndexOf(ZIP_DIRECTORY_SEPARATOR)];
 
@@ -160,9 +160,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             return _subfolders;
 
         _subfolders = [];
-        Archive = await OpenArchiveAsync(cancellationToken);
+        _archive = await OpenArchiveAsync(cancellationToken);
 
-        foreach (var entry in Archive.Entries)
+        foreach (var entry in _archive.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -190,7 +190,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (Archive is null)
+        if (_archive is null)
         {
             if (SourceFile is null)
                 throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
@@ -220,7 +220,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 if (factory.IsArchive(rewindableStream, options.Password))
                 {
                     rewindableStream.Position = 0;
-                    Archive = factory.Open(rewindableStream, options);
+                    _archive = factory.Open(rewindableStream, options);
                     break;
                 }
 
@@ -228,13 +228,13 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             }
         }
 
-        if (Archive is null)
-            throw new ArgumentNullException(nameof(Archive));
+        if (_archive is null)
+            throw new ArgumentNullException(nameof(_archive));
 
         
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Archive;
+        return _archive;
     }
 
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
@@ -301,7 +301,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// <inheritdoc />
     public void Dispose()
     {
-        Archive?.Dispose();
-        Archive = null;
+        _archive?.Dispose();
+        _archive = null;
     }
 }

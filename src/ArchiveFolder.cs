@@ -1,6 +1,5 @@
 ﻿using SharpCompress.Archives;
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
@@ -146,6 +145,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// Wraps a <see cref="Stream"/> with the appropriate archive implementation.
     /// </summary>
     /// <param name="stream">The archive stream to read.</param>
+    /// <param name="id">The ID to assign to the created folder.</param>
+    /// <param name="name">The name to assign to the created folder.</param>
     /// <returns>
     /// The opened <see cref="IFolder"/>, or an <see cref="IModifiableFolder"/> if archive is writable.
     /// </returns>
