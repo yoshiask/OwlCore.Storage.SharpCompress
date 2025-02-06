@@ -26,10 +26,11 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// </summary>
     internal const char ZIP_DIRECTORY_SEPARATOR = '/';
 
+    protected IFile? SourceFile { get; }
+    protected IArchive? Archive { get; private set; }
+    
     private readonly string _key;
     private readonly IFolder? _parent;
-    private readonly IFile? _sourceFile;
-    private IArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
 
     public string Id { get; }
@@ -38,16 +39,16 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
     {
         _parent = null;
-        _archive = archive;
+        Archive = archive;
     }
 
     public ReadOnlyArchiveFolder(IFile sourceFile)
         : this(sourceFile.Id.Hash(), Path.GetFileNameWithoutExtension(sourceFile.Name))
     {
-        _sourceFile = sourceFile;
+        SourceFile = sourceFile;
     }
 
-    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent._archive!, CombinePath(true, parent.Id, name), name)
+    protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent.Archive!, CombinePath(true, parent.Id, name), name)
     {
         _parent = parent;
     }
@@ -98,9 +99,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     public async Task<IStorableChild> GetItemAsync(string id, CancellationToken cancellationToken = new CancellationToken())
     {
         var key = GetKey(id);
-        _archive = await OpenArchiveAsync(cancellationToken);
+        Archive = await OpenArchiveAsync(cancellationToken);
 
-        IArchiveEntry? entry = _archive.Entries.FirstOrDefault(e => e.Key == key);
+        IArchiveEntry? entry = Archive.Entries.FirstOrDefault(e => e.Key == key);
 
         if (entry is null)
         {
@@ -159,9 +160,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             return _subfolders;
 
         _subfolders = [];
-        _archive = await OpenArchiveAsync(cancellationToken);
+        Archive = await OpenArchiveAsync(cancellationToken);
 
-        foreach (var entry in _archive.Entries)
+        foreach (var entry in Archive.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -185,16 +186,16 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         return _subfolders;
     }
 
-    protected virtual async Task<IArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<IArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_archive is null)
+        if (Archive is null)
         {
-            if (_sourceFile is null)
+            if (SourceFile is null)
                 throw new InvalidOperationException("ArchiveFolder requires either an archive or file.");
 
-            var archiveStream = await _sourceFile.OpenStreamAsync(FileAccess.Read, cancellationToken);
+            var archiveStream = await SourceFile.OpenStreamAsync(FileAccess.Read, cancellationToken);
 
             Stream rewindableStream = new LazySeekStream(archiveStream);
             rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
@@ -219,7 +220,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 if (factory.IsArchive(rewindableStream, options.Password))
                 {
                     rewindableStream.Position = 0;
-                    _archive = factory.Open(rewindableStream, options);
+                    Archive = factory.Open(rewindableStream, options);
                     break;
                 }
 
@@ -227,13 +228,13 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             }
         }
 
-        if (_archive is null)
-            throw new ArgumentNullException(nameof(_archive));
+        if (Archive is null)
+            throw new ArgumentNullException(nameof(Archive));
 
         
         cancellationToken.ThrowIfCancellationRequested();
 
-        return _archive;
+        return Archive;
     }
 
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
@@ -300,7 +301,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// <inheritdoc />
     public void Dispose()
     {
-        _archive?.Dispose();
-        _archive = null;
+        Archive?.Dispose();
+        Archive = null;
     }
 }

@@ -1,13 +1,18 @@
 ﻿using SharpCompress.Archives;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Linq;
+using CommunityToolkit.Diagnostics;
+using OwlCore.ComponentModel;
+using SharpCompress.Common;
+using SharpCompress.Writers;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
+public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushable
 {
     public ArchiveFolder(IArchive archive, string id, string name) : base(archive, id, name)
     {
@@ -118,8 +123,24 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
     protected async Task<IWritableArchive> OpenWritableArchiveAsync(CancellationToken cancellationToken = default)
     {
         var archive = await OpenArchiveAsync(cancellationToken);
-        return (IWritableArchive)archive;
+        
+        if (archive is not IWritableArchive writableArchive)
+            throw new IOException($"Archive '{Name}' ({Id}) is not writable.");
+        
+        return writableArchive;
     }
+
+    public async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        if (!CanFlush())
+            throw new InvalidOperationException($"Only {nameof(ArchiveFolder)}s created from files can be flushed.");
+        
+        var archive = await OpenWritableArchiveAsync(cancellationToken);
+        
+        await FlushToAsync(SourceFile!, archive, cancellationToken);
+    }
+    
+    public bool CanFlush() => SourceFile is not null;
 
     /// <summary>
     /// Wraps a <see cref="Stream"/> with the appropriate archive implementation.
@@ -136,5 +157,24 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder
             return new ArchiveFolder(writableArchive, id, name);
 
         return new ReadOnlyArchiveFolder(archive, id, name);
+    }
+    
+    public static async Task<ArchiveFolder> CreateArchiveAsync(IModifiableFolder parentFolder, string name,
+        ArchiveType archiveType, CancellationToken cancellationToken)
+    {
+        var archiveFile = await parentFolder.CreateFileAsync(name, overwrite: true, cancellationToken);
+        var archive = ArchiveFactory.Create(archiveType);
+
+        await FlushToAsync(archiveFile, archive, cancellationToken);
+
+        var archiveFolder = new ArchiveFolder(archive, archiveFile.Name, archiveFile.Name);
+        return archiveFolder;
+    }
+    
+    public static async Task FlushToAsync(IFile archiveFile, IWritableArchive archive, CancellationToken cancellationToken)
+    {
+        using var archiveFileStream = await archiveFile.OpenReadWriteAsync(cancellationToken);
+        Guard.IsEqualTo(archiveFileStream.Position, 0);
+        archive.SaveTo(archiveFileStream, new WriterOptions(CompressionType.Deflate));
     }
 }
