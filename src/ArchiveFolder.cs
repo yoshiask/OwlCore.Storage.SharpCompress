@@ -129,6 +129,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         return writableArchive;
     }
 
+    /// <inheritdoc/>
     public async Task FlushAsync(CancellationToken cancellationToken)
     {
         if (!CanFlush())
@@ -139,6 +140,9 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         await FlushToAsync(SourceFile!, archive, cancellationToken);
     }
     
+    /// <summary>
+    /// Whether changes to this <see cref="ArchiveFolder"/> can be flushed to the underlying file.
+    /// </summary>
     public bool CanFlush() => SourceFile is not null;
 
     /// <summary>
@@ -160,6 +164,14 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         return new ReadOnlyArchiveFolder(archive, id, name);
     }
     
+    /// <summary>
+    /// Creates an empty archive within the <paramref name="parentFolder"/>.
+    /// </summary>
+    /// <param name="parentFolder">The folder to create the archive in.</param>
+    /// <param name="name">The name of the new archive.</param>
+    /// <param name="archiveType">The type of archive to create.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
+    /// <returns>A task containing the new <see cref="ArchiveFolder"/>.</returns>
     public static async Task<ArchiveFolder> CreateArchiveAsync(IModifiableFolder parentFolder, string name,
         ArchiveType archiveType, CancellationToken cancellationToken)
     {
@@ -172,6 +184,12 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         return archiveFolder;
     }
     
+    /// <summary>
+    /// Writes an archive to the supplied file.
+    /// </summary>
+    /// <param name="archiveFile">The file to save the archive to.</param>
+    /// <param name="archive">The archive to save.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
     public static async Task FlushToAsync(IFile archiveFile, IWritableArchive archive, CancellationToken cancellationToken)
     {
         using var archiveFileStream = await archiveFile.OpenReadWriteAsync(cancellationToken);
