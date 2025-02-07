@@ -38,7 +38,7 @@
   <PropertyGroup>
     <Author>Joshua Askharoun</Author>
     <Authors>$(Author)</Authors>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Product>OwlCore</Product>
     <DebugType>embedded</DebugType>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -52,6 +52,11 @@
       Reading and writing GZip archives is partially supported with the same limitations as SharpCompress.
     </Description>
     <PackageReleaseNotes>
+      --- 0.1.2 ---
+      [New]
+      Added helper methods and matching `IFolder` extensions for creating and flushing archives.
+      Exposed `ReadOnlyArchiveFolder`'s source file to inheriting classes.
+      
       --- 0.1.1 ---
       [Fixes]
       Inherited fixes from OwlCore.Storage 0.12.0 and OwlCore.ComponentModel 0.9.0.
