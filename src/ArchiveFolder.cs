@@ -17,7 +17,19 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     {
     }
 
-    public ArchiveFolder(IFile sourceFile) : base(sourceFile)
+    /// <summary>
+    /// Creates a readable and writable archive from the given file.
+    /// </summary>
+    /// <param name="sourceFile">
+    /// The file to read the archive from.
+    /// </param>
+    /// <param name="backingStream">
+    /// A backing stream to enable seeking on storage implementations that otherwise don't support it.
+    /// If <paramref name="sourceFile"/> always allows seeking, then this may be <see langword="null"/>.
+    /// Otherwise, if the file stream doesn't support seeking and no backing stream is provided,
+    /// only archives up to ~2.1GB can be loaded. 
+    /// </param>
+    public ArchiveFolder(IFile sourceFile, Stream? backingStream = null) : base(sourceFile, backingStream)
     {
     }
 

@@ -30,6 +30,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     
     private readonly string _key;
     private readonly IFolder? _parent;
+    private readonly Stream? _backingStream;
     private IArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
 
@@ -42,10 +43,23 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         _archive = archive;
     }
 
-    public ReadOnlyArchiveFolder(IFile sourceFile)
+    /// <summary>
+    /// Creates a read-only archive from the given file.
+    /// </summary>
+    /// <param name="sourceFile">
+    /// The file to read the archive from.
+    /// </param>
+    /// <param name="backingStream">
+    /// A backing stream to enable seeking on storage implementations that otherwise don't support it.
+    /// If <paramref name="sourceFile"/> always allows seeking, then this may be <see langword="null"/>.
+    /// Otherwise, if the file stream doesn't support seeking and no backing stream is provided,
+    /// only archives up to ~2.1GB can be loaded. 
+    /// </param>
+    public ReadOnlyArchiveFolder(IFile sourceFile, Stream? backingStream = null)
         : this(sourceFile.Id.Hash(), Path.GetFileNameWithoutExtension(sourceFile.Name))
     {
         SourceFile = sourceFile;
+        _backingStream = backingStream;
     }
 
     protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent._archive!, CombinePath(true, parent.Id, name), name)
@@ -197,9 +211,21 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
             var archiveStream = await SourceFile.OpenStreamAsync(FileAccess.Read, cancellationToken);
 
-            Stream rewindableStream = new LazySeekStream(archiveStream);
-            rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
-            rewindableStream.Position = 0;
+            Stream rewindableStream;
+
+            if (archiveStream.CanSeek)
+            {
+                rewindableStream = archiveStream;
+            }
+            else
+            {
+                rewindableStream = _backingStream is null
+                    ? new LazySeekStream(archiveStream)
+                    : new LazySeekStream(archiveStream, _backingStream);
+                
+                rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
+                rewindableStream.Position = 0;
+            }
 
             if (GZipArchive.IsGZipFile(rewindableStream))
             {
