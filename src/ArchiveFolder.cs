@@ -125,7 +125,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         var archive = await OpenWritableArchiveAsync(cancellationToken);
         var entries = archive.Entries.ToList();
         foreach (var entry in entries)
-            if (entry.Key == key || IsChild(entry.Key, key))
+            if (entry.Key != null && (entry.Key == key || IsChild(entry.Key, key)))
                 archive.RemoveEntry(entry);
 
         // Remove subfolder entry if one exists

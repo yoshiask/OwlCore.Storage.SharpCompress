@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,20 +6,36 @@ using SharpCompress.Archives;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ArchiveFile : IChildFile
+/// <summary>
+/// An <see cref="IFile"/> implementation backed by an archive entry.
+/// </summary>
+public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccessedAt
 {
     private readonly IArchiveEntry _entry;
     private readonly IFolder _parent;
     
+    private ArchiveEntryCreatedAtProperty? _createdAt;
+    private ArchiveEntryCreatedAtOffsetProperty? _createdAtOffset;
+    private ArchiveEntryLastModifiedAtProperty? _lastModifiedAt;
+    private ArchiveEntryLastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ArchiveEntryLastAccessedAtProperty? _lastAccessedAt;
+    private ArchiveEntryLastAccessedAtOffsetProperty? _lastAccessedAtOffset;
+
+    /// <inheritdoc/>
     public string Id { get; }
+    
+    /// <inheritdoc/>
     public string Name { get; }
 
+    /// <summary>
+    /// Creates a new instance of <see cref="ArchiveFile"/>.
+    /// </summary>
     public ArchiveFile(IArchiveEntry entry, ReadOnlyArchiveFolder parent)
     {
         _entry = entry;
         _parent = parent;
 
-        Name = ReadOnlyArchiveFolder.GetName(entry.Key);
+        Name = ReadOnlyArchiveFolder.GetName(entry.Key!);
         Id = parent.GetRootId() + ReadOnlyArchiveFolder.ZIP_DIRECTORY_SEPARATOR + Name;
     }
     
@@ -37,9 +53,29 @@ public class ArchiveFile : IChildFile
         Name = name;
     }
 
+    /// <inheritdoc/>
+    public ICreatedAtProperty CreatedAt => _createdAt ??= new ArchiveEntryCreatedAtProperty(this, _entry);
+
+    /// <inheritdoc/>
+    public ICreatedAtOffsetProperty CreatedAtOffset => _createdAtOffset ??= new ArchiveEntryCreatedAtOffsetProperty(this, _entry);
+
+    /// <inheritdoc/>
+    public ILastModifiedAtProperty LastModifiedAt => _lastModifiedAt ??= new ArchiveEntryLastModifiedAtProperty(this, _entry);
+
+    /// <inheritdoc/>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset => _lastModifiedAtOffset ??= new ArchiveEntryLastModifiedAtOffsetProperty(this, _entry);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtProperty LastAccessedAt => _lastAccessedAt ??= new ArchiveEntryLastAccessedAtProperty(this, _entry);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset => _lastAccessedAtOffset ??= new ArchiveEntryLastAccessedAtOffsetProperty(this, _entry);
+
+    /// <inheritdoc/>
     public Task<IFolder?> GetParentAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IFolder?>(_parent);
 
+    /// <inheritdoc/>
     public Task<Stream> OpenStreamAsync(FileAccess accessMode = FileAccess.Read, CancellationToken cancellationToken = default)
     {
         if (accessMode == 0 || (int)accessMode > 3)

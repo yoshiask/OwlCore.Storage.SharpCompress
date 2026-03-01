@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using OwlCore.ComponentModel;
 using SharpCompress.Archives;
 using SharpCompress.Archives.GZip;
+using SharpCompress.Common;
 using SharpCompress.Compressors;
 using SharpCompress.Compressors.Deflate;
 using SharpCompress.Factories;
@@ -16,7 +17,10 @@ using SharpCompress.Readers;
 
 namespace OwlCore.Storage.SharpCompress;
 
-public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstByName, IGetItemRecursive, IDisposable
+/// <summary>
+/// A read-only folder implementation backed by an archive.
+/// </summary>
+public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstByName, IGetItemRecursive, ICreatedAt, ILastModifiedAt, ILastAccessedAt, IDisposable
 {
     /// <summary>
     /// The directory separator as defined by the ZIP standard.
@@ -32,11 +36,26 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     private readonly IFolder? _parent;
     private IArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
+    
+    /// <summary>
+    /// The directory entry backing this folder, if one exists.
+    /// Some archive formats have explicit directory entries with timestamps,
+    /// others only have implicit directories inferred from file paths.
+    /// </summary>
+    private IEntry? _directoryEntry;
 
     // Streams we create when opening from a SourceFile (ownership stays with this folder)
     private Stream? _rootStream;           // The original stream returned by SourceFile.OpenStreamAsync
     private Stream? _compositeStream;      // The top-most wrapped rewindable/decompression stream actually passed to Factory.Open
     private bool _ownsStreams;             // True when we created the streams (SourceFile ctor path)
+    
+    // Timestamp properties (lazily initialized)
+    private ArchiveEntryCreatedAtProperty? _createdAt;
+    private ArchiveEntryCreatedAtOffsetProperty? _createdAtOffset;
+    private ArchiveEntryLastModifiedAtProperty? _lastModifiedAt;
+    private ArchiveEntryLastModifiedAtOffsetProperty? _lastModifiedAtOffset;
+    private ArchiveEntryLastAccessedAtProperty? _lastAccessedAt;
+    private ArchiveEntryLastAccessedAtOffsetProperty? _lastAccessedAtOffset;
 
     protected Stream? RootStream 
     { 
@@ -58,6 +77,36 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
     public string Id { get; }
     public string Name { get; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Returns null if the archive format doesn't support this timestamp or if the folder
+    /// is implicit (no explicit directory entry exists in the archive).
+    /// </remarks>
+    public ICreatedAtProperty CreatedAt => _createdAt ??= new ArchiveEntryCreatedAtProperty(this, new NullEntry(_directoryEntry));
+
+    /// <inheritdoc/>
+    public ICreatedAtOffsetProperty CreatedAtOffset => _createdAtOffset ??= new ArchiveEntryCreatedAtOffsetProperty(this, new NullEntry(_directoryEntry));
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Returns null if the archive format doesn't support this timestamp or if the folder
+    /// is implicit (no explicit directory entry exists in the archive).
+    /// </remarks>
+    public ILastModifiedAtProperty LastModifiedAt => _lastModifiedAt ??= new ArchiveEntryLastModifiedAtProperty(this, new NullEntry(_directoryEntry));
+
+    /// <inheritdoc/>
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset => _lastModifiedAtOffset ??= new ArchiveEntryLastModifiedAtOffsetProperty(this, new NullEntry(_directoryEntry));
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Returns null if the archive format doesn't support this timestamp or if the folder
+    /// is implicit (no explicit directory entry exists in the archive).
+    /// </remarks>
+    public ILastAccessedAtProperty LastAccessedAt => _lastAccessedAt ??= new ArchiveEntryLastAccessedAtProperty(this, new NullEntry(_directoryEntry));
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset => _lastAccessedAtOffset ??= new ArchiveEntryLastAccessedAtOffsetProperty(this, new NullEntry(_directoryEntry));
 
     public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
     {
@@ -83,6 +132,14 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     protected ReadOnlyArchiveFolder(ReadOnlyArchiveFolder parent, string name) : this(parent._archive!, CombinePath(true, parent.Id, name), name)
     {
         _parent = parent;
+        
+        // Try to find the directory entry for this subfolder
+        // The key for this folder (e.g., "subfolder/") may have an explicit entry
+        if (parent._archive != null)
+        {
+            _directoryEntry = parent._archive.Entries.FirstOrDefault(e => 
+                e.Key == _key || e.Key == _key.TrimEnd(ZIP_DIRECTORY_SEPARATOR));
+        }
     }
 
     protected ReadOnlyArchiveFolder(string id, string name)
@@ -118,7 +175,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             foreach (var entry in archive.Entries)
             {
                 // Only look at children of this current folder
-                if (!IsChild(entry.Key, _key) || IsDirectory(entry))
+                if (entry.Key is null || !IsChild(entry.Key, _key) || IsDirectory(entry))
                     continue;
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -198,7 +255,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!entry.Key.StartsWith(_key))
+            if (entry.Key is null || !entry.Key.StartsWith(_key))
                 continue;
 
             var relativeKey = entry.Key.Remove(0, _key.Length);
@@ -343,7 +400,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
     protected static string GetKey(string id) => id[(id.IndexOf(ZIP_DIRECTORY_SEPARATOR) + 1)..];
 
-    protected static bool IsDirectory(IArchiveEntry entry) => entry.IsDirectory || entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR;
+    protected static bool IsDirectory(IArchiveEntry entry) => entry.IsDirectory || (entry.Key is not null && entry.Key[^1] == ZIP_DIRECTORY_SEPARATOR);
 
     internal static string GetName(string id)
     {
@@ -419,4 +476,35 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         _compositeStream = null;
         _rootStream = null;
     }
+    
+    /// <summary>
+    /// A wrapper that returns null for all timestamps when the underlying entry is null.
+    /// Used for folders that don't have an explicit directory entry in the archive.
+    /// </summary>
+    private sealed class NullEntry : IEntry
+    {
+        private readonly IEntry? _inner;
+        
+        public NullEntry(IEntry? inner) => _inner = inner;
+        
+        public string Key => _inner?.Key ?? string.Empty;
+        public long Size => _inner?.Size ?? 0;
+        public long CompressedSize => _inner?.CompressedSize ?? 0;
+        public CompressionType CompressionType => _inner?.CompressionType ?? CompressionType.None;
+        public DateTime? LastModifiedTime => _inner?.LastModifiedTime;
+        public DateTime? CreatedTime => _inner?.CreatedTime;
+        public DateTime? LastAccessedTime => _inner?.LastAccessedTime;
+        public DateTime? ArchivedTime => _inner?.ArchivedTime;
+        public long Crc => _inner?.Crc ?? 0;
+        public bool IsDirectory => _inner?.IsDirectory ?? true;
+        public bool IsEncrypted => _inner?.IsEncrypted ?? false;
+        public bool IsSplitAfter => _inner?.IsSplitAfter ?? false;
+        public int? Attrib => _inner?.Attrib;
+        public string? LinkTarget => _inner?.LinkTarget;
+        public bool IsSolid => _inner?.IsSolid ?? false;
+        public int VolumeIndexFirst => _inner?.VolumeIndexFirst ?? 0;
+        public int VolumeIndexLast => _inner?.VolumeIndexLast ?? 0;
+    }
 }
+
+

@@ -1,10 +1,30 @@
-﻿namespace OwlCore.Storage.SharpCompress.Tests;
+﻿using OwlCore.Storage.CommonTests;
+
+namespace OwlCore.Storage.SharpCompress.Tests;
 
 public abstract class CommonArchiveFolderTests : CommonIModifiableFolderTests
 {
     // Required for base class to perform common tests.
 
     protected abstract IWritableArchive CreateArchive();
+
+    /// <summary>
+    /// Archive folder timestamps may be null for implicit folders (no explicit directory entry)
+    /// or for formats that don't support this timestamp.
+    /// </summary>
+    public override PropertyValueAvailability CreatedAtAvailability => PropertyValueAvailability.Maybe;
+
+    /// <summary>
+    /// Archive folder timestamps may be null for implicit folders (no explicit directory entry)
+    /// or for formats that don't support this timestamp.
+    /// </summary>
+    public override PropertyValueAvailability LastModifiedAtAvailability => PropertyValueAvailability.Maybe;
+
+    /// <summary>
+    /// Archive folder timestamps may be null for implicit folders (no explicit directory entry)
+    /// or for formats that don't support this timestamp.
+    /// </summary>
+    public override PropertyValueAvailability LastAccessedAtAvailability => PropertyValueAvailability.Maybe;
 
     public override async Task<IModifiableFolder> CreateModifiableFolderAsync()
     {
@@ -28,6 +48,13 @@ public abstract class CommonArchiveFolderTests : CommonIModifiableFolderTests
 
         return folder;
     }
+
+    // Archives don't support setting folder timestamps at creation
+    public override Task<IFolder?> CreateFolderWithCreatedAtAsync(DateTime createdAt) => Task.FromResult<IFolder?>(null);
+    public override Task<IFolder?> CreateFolderWithLastModifiedAtAsync(DateTime lastModifiedAt) => Task.FromResult<IFolder?>(null);
+    public override Task<IFolder?> CreateFolderWithLastAccessedAtAsync(DateTime lastAccessedAt) => Task.FromResult<IFolder?>(null);
+    public override Task<IFile?> CreateFileInFolderWithLastModifiedAtAsync(IModifiableFolder folder, DateTime lastModifiedAt) => Task.FromResult<IFile?>(null);
+    public override Task<CommonIModifiableFolderTests.CreateFileInFolderWithTimestampsResult?> CreateFileInFolderWithTimestampsAsync(IModifiableFolder folder, DateTime? createdAt, DateTime? lastModifiedAt, DateTime? lastAccessedAt) => Task.FromResult<CommonIModifiableFolderTests.CreateFileInFolderWithTimestampsResult?>(null);
 
     public async Task<IModifiableFolder> CreateModifiableFolderWithNestedItems()
     {
