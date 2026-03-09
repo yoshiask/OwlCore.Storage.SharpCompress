@@ -83,30 +83,30 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// Returns null if the archive format doesn't support this timestamp or if the folder
     /// is implicit (no explicit directory entry exists in the archive).
     /// </remarks>
-    public ICreatedAtProperty CreatedAt => _createdAt ??= new ArchiveEntryCreatedAtProperty(this, new NullEntry(_directoryEntry));
+    public ICreatedAtProperty CreatedAt => _createdAt ??= new ArchiveEntryCreatedAtProperty(this, _directoryEntry);
 
     /// <inheritdoc/>
-    public ICreatedAtOffsetProperty CreatedAtOffset => _createdAtOffset ??= new ArchiveEntryCreatedAtOffsetProperty(this, new NullEntry(_directoryEntry));
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Returns null if the archive format doesn't support this timestamp or if the folder
-    /// is implicit (no explicit directory entry exists in the archive).
-    /// </remarks>
-    public ILastModifiedAtProperty LastModifiedAt => _lastModifiedAt ??= new ArchiveEntryLastModifiedAtProperty(this, new NullEntry(_directoryEntry));
-
-    /// <inheritdoc/>
-    public ILastModifiedAtOffsetProperty LastModifiedAtOffset => _lastModifiedAtOffset ??= new ArchiveEntryLastModifiedAtOffsetProperty(this, new NullEntry(_directoryEntry));
+    public ICreatedAtOffsetProperty CreatedAtOffset => _createdAtOffset ??= new ArchiveEntryCreatedAtOffsetProperty(this, _directoryEntry);
 
     /// <inheritdoc/>
     /// <remarks>
     /// Returns null if the archive format doesn't support this timestamp or if the folder
     /// is implicit (no explicit directory entry exists in the archive).
     /// </remarks>
-    public ILastAccessedAtProperty LastAccessedAt => _lastAccessedAt ??= new ArchiveEntryLastAccessedAtProperty(this, new NullEntry(_directoryEntry));
+    public ILastModifiedAtProperty LastModifiedAt => _lastModifiedAt ??= new ArchiveEntryLastModifiedAtProperty(this, _directoryEntry);
 
     /// <inheritdoc/>
-    public ILastAccessedAtOffsetProperty LastAccessedAtOffset => _lastAccessedAtOffset ??= new ArchiveEntryLastAccessedAtOffsetProperty(this, new NullEntry(_directoryEntry));
+    public ILastModifiedAtOffsetProperty LastModifiedAtOffset => _lastModifiedAtOffset ??= new ArchiveEntryLastModifiedAtOffsetProperty(this, _directoryEntry);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Returns null if the archive format doesn't support this timestamp or if the folder
+    /// is implicit (no explicit directory entry exists in the archive).
+    /// </remarks>
+    public ILastAccessedAtProperty LastAccessedAt => _lastAccessedAt ??= new ArchiveEntryLastAccessedAtProperty(this, _directoryEntry);
+
+    /// <inheritdoc/>
+    public ILastAccessedAtOffsetProperty LastAccessedAtOffset => _lastAccessedAtOffset ??= new ArchiveEntryLastAccessedAtOffsetProperty(this, _directoryEntry);
 
     public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
     {
@@ -476,35 +476,4 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         _compositeStream = null;
         _rootStream = null;
     }
-    
-    /// <summary>
-    /// A wrapper that returns null for all timestamps when the underlying entry is null.
-    /// Used for folders that don't have an explicit directory entry in the archive.
-    /// </summary>
-    private sealed class NullEntry : IEntry
-    {
-        private readonly IEntry? _inner;
-        
-        public NullEntry(IEntry? inner) => _inner = inner;
-        
-        public string Key => _inner?.Key ?? string.Empty;
-        public long Size => _inner?.Size ?? 0;
-        public long CompressedSize => _inner?.CompressedSize ?? 0;
-        public CompressionType CompressionType => _inner?.CompressionType ?? CompressionType.None;
-        public DateTime? LastModifiedTime => _inner?.LastModifiedTime;
-        public DateTime? CreatedTime => _inner?.CreatedTime;
-        public DateTime? LastAccessedTime => _inner?.LastAccessedTime;
-        public DateTime? ArchivedTime => _inner?.ArchivedTime;
-        public long Crc => _inner?.Crc ?? 0;
-        public bool IsDirectory => _inner?.IsDirectory ?? true;
-        public bool IsEncrypted => _inner?.IsEncrypted ?? false;
-        public bool IsSplitAfter => _inner?.IsSplitAfter ?? false;
-        public int? Attrib => _inner?.Attrib;
-        public string? LinkTarget => _inner?.LinkTarget;
-        public bool IsSolid => _inner?.IsSolid ?? false;
-        public int VolumeIndexFirst => _inner?.VolumeIndexFirst ?? 0;
-        public int VolumeIndexLast => _inner?.VolumeIndexLast ?? 0;
-    }
 }
-
-
