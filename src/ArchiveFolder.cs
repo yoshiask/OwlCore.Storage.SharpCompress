@@ -1,7 +1,4 @@
 ﻿using SharpCompress.Archives;
-using SharpCompress.Archives.GZip;
-using SharpCompress.Archives.Tar;
-using SCZipArchive = SharpCompress.Archives.Zip.ZipArchive;
 using System;
 using System.IO;
 using System.IO.Compression;
@@ -253,7 +250,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         if (stream.CanWrite && archive is IWritableAsyncArchive<WriterOptions> writableArchive)
             return new ArchiveFolder(writableArchive, id, name);
 
-        return new ReadOnlyArchiveFolder((IAsyncArchive)archive, id, name);
+        return new ReadOnlyArchiveFolder(archive, id, name);
     }
 
     /// <summary>
@@ -277,8 +274,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// when you only need an initialized archive file and intend to manage archive opening/lifecycle yourself (e.g.,
     /// to control buffering, compression, or persistence strategy).
     /// </remarks>
-    public static async Task<ArchiveFolder> CreateArchiveAsync(IModifiableFolder parentFolder, string name,
-        ArchiveType archiveType, CancellationToken cancellationToken)
+    public static async Task<ArchiveFolder> CreateArchiveAsync(IModifiableFolder parentFolder, string name, CancellationToken cancellationToken)
     {
         var archiveFile = await parentFolder.CreateFileAsync(name, overwrite: true, cancellationToken);
         var archive = ArchiveFactory.CreateArchive<WriterOptions>();
@@ -307,11 +303,11 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// <para />
     /// Avoid constructing directly from a raw <see cref="Stream"/> unless you also provide proper rewind/length/decompression wrappers.
     /// <para />
-    /// Use <see cref="CreateArchiveAsync(IModifiableFolder, string, ArchiveType, CancellationToken)"/>
+    /// Use <see cref="CreateArchiveAsync(IModifiableFolder, string, CancellationToken)"/>
     /// when you want a ready-to-use <see cref="ArchiveFolder"/> with safe defaults, detection heuristics, and flush/handle
     /// management provided for you.
     /// </remarks>
-    public static async Task<IFile> CreateArchiveAsync(IFile archiveFile, ArchiveType archiveType, CancellationToken cancellationToken)
+    public static async Task<IFile> CreateArchiveAsync(IFile archiveFile, CancellationToken cancellationToken)
     {
         var archive = ArchiveFactory.CreateArchive<WriterOptions>();
         await FlushToAsync(archiveFile, archive, cancellationToken);

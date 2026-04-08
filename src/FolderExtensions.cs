@@ -9,23 +9,22 @@ namespace OwlCore.Storage.SharpCompress;
 public static class FolderExtensions
 {
     /// <inheritdoc cref="ArchiveFolder.CreateArchiveAsync"/>
-    public static async Task<ArchiveFolder> CreateArchiveAsync(this IModifiableFolder parentFolder, string name,
-        ArchiveType archiveType, CancellationToken cancellationToken = default)
+    public static Task<ArchiveFolder> CreateArchiveAsync(this IModifiableFolder parentFolder, string name, CancellationToken cancellationToken = default)
     {
-        return await ArchiveFolder.CreateArchiveAsync(parentFolder, name, archiveType, cancellationToken);
+        return ArchiveFolder.CreateArchiveAsync(parentFolder, name, cancellationToken);
     }
     
     /// <inheritdoc cref="ArchiveFolder.FlushToAsync(IFile, IWritableAsyncArchive, CancellationToken)"/>
-    public static async Task FlushToAsync(this IWritableAsyncArchive archive, IFile archiveFile,
+    public static Task FlushToAsync(this IWritableAsyncArchive archive, IFile archiveFile,
         CancellationToken cancellationToken = default)
     {
-        await ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);
+        return ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);
     }
 
     /// <inheritdoc cref="ArchiveFolder.FlushToAsync(IFile, IWritableArchive{WriterOptions}, CancellationToken)"/>
-    public static async Task FlushToAsync(this IWritableArchive<WriterOptions> archive, IFile archiveFile,
+    public static Task FlushToAsync(this IWritableArchive<WriterOptions> archive, IFile archiveFile,
         CancellationToken cancellationToken = default)
     {
-        await ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);
+        return ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);
     }
 }

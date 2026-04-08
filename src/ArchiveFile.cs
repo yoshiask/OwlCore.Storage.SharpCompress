@@ -11,7 +11,7 @@ namespace OwlCore.Storage.SharpCompress;
 /// </summary>
 public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccessedAt
 {
-    private readonly IArchiveEntry _entry;
+    private IArchiveEntry _entry;
     private readonly IFolder _parent;
     
     private ArchiveEntryCreatedAtProperty? _createdAt;
@@ -81,13 +81,77 @@ public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccesse
         if (accessMode == 0 || (int)accessMode > 3)
             throw new ArgumentOutOfRangeException(nameof(accessMode));
 
-        var stream = await _entry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var stream = await OpenEntryStreamWithFallbackAsync(cancellationToken).ConfigureAwait(false);
+
+        if (accessMode.HasFlag(FileAccess.Write) && !stream.CanWrite)
+        {
+            if (_parent is not ArchiveFolder)
+                throw new NotSupportedException();
+
+            byte[] initialBytes = [];
+            if (stream.CanRead)
+            {
+                using (stream)
+                {
+                    using MemoryStream temp = new();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await stream.CopyToAsync(temp, 81920, cancellationToken).ConfigureAwait(false);
+                    initialBytes = temp.ToArray();
+                }
+            }
+            else
+            {
+                stream.Dispose();
+            }
+
+            return new CommitOnDisposeMemoryStream(initialBytes, bytes => ReplaceEntryContentAsync(bytes, CancellationToken.None));
+        }
 
         if (accessMode.HasFlag(FileAccess.Read) && !stream.CanRead)
             throw new NotSupportedException();
-        if (accessMode.HasFlag(FileAccess.Write) && !stream.CanWrite)
+
+        if (_parent is ArchiveFolder)
+            return stream;
+
+        return new NonDisposableStreamWrapper(stream);
+    }
+
+    private async Task<Stream> OpenEntryStreamWithFallbackAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return _entry.OpenEntryStream();
+        }
+        catch (NotImplementedException)
+        {
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            return await _entry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (NotImplementedException)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private async Task ReplaceEntryContentAsync(byte[] content, CancellationToken cancellationToken)
+    {
+        if (_parent is not ArchiveFolder parent)
             throw new NotSupportedException();
 
-        return stream;
+        var archive = await parent.OpenArchiveAsync(cancellationToken).ConfigureAwait(false);
+        var writableArchive = archive as IWritableArchive ?? throw new NotSupportedException();
+
+        var key = _entry.Key ?? throw new InvalidOperationException("Entry key is unavailable.");
+        writableArchive.RemoveEntry(_entry);
+
+        var replacementStream = new MemoryStream(content);
+        _entry = writableArchive.AddEntry(key, replacementStream, false);
     }
 }
