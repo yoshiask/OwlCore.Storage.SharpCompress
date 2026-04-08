@@ -3,7 +3,7 @@
 [TestClass]
 public abstract class CommonDiskArchiveFolderTests
 {
-    protected virtual IArchive OpenArchive() => throw new NotImplementedException();
+    protected virtual IAsyncArchive OpenArchive() => throw new NotImplementedException();
 
     protected virtual ReadOnlyArchiveFolder CreateFolder()
     {

@@ -3,11 +3,11 @@ namespace OwlCore.Storage.SharpCompress.Tests;
 [TestClass]
 public class ZipFolderTests : CommonArchiveFolderTests
 {
-    protected override IWritableArchive CreateArchive() => ZipArchive.Create();
+    protected override IWritableAsyncArchive CreateArchive() => (IWritableAsyncArchive)ZipArchive.CreateArchive();
 }
 
 [TestClass]
 public class TarFolderTests : CommonArchiveFolderTests
 {
-    protected override IWritableArchive CreateArchive() => TarArchive.Create();
+    protected override IWritableAsyncArchive CreateArchive() => (IWritableAsyncArchive)TarArchive.CreateArchive();
 }

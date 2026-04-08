@@ -17,9 +17,6 @@ using SharpCompress.Readers;
 
 namespace OwlCore.Storage.SharpCompress;
 
-/// <summary>
-/// A read-only folder implementation backed by an archive.
-/// </summary>
 public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstByName, IGetItemRecursive, ICreatedAt, ILastModifiedAt, ILastAccessedAt, IDisposable
 {
     /// <summary>
@@ -34,7 +31,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
     private readonly string _key;
     private readonly IFolder? _parent;
-    private IArchive? _archive;
+    private IAsyncArchive? _archive;
     private Dictionary<string, IChildFolder>? _subfolders;
     
     /// <summary>
@@ -42,7 +39,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// Some archive formats have explicit directory entries with timestamps,
     /// others only have implicit directories inferred from file paths.
     /// </summary>
-    private IEntry? _directoryEntry;
+    private readonly IEntry? _directoryEntry;
 
     // Streams we create when opening from a SourceFile (ownership stays with this folder)
     private Stream? _rootStream;           // The original stream returned by SourceFile.OpenStreamAsync
@@ -108,10 +105,15 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// <inheritdoc/>
     public ILastAccessedAtOffsetProperty LastAccessedAtOffset => _lastAccessedAtOffset ??= new ArchiveEntryLastAccessedAtOffsetProperty(this, _directoryEntry);
 
-    public ReadOnlyArchiveFolder(IArchive archive, string id, string name) : this(id, name)
+    public ReadOnlyArchiveFolder(IAsyncArchive archive, string id, string name) : this(id, name)
     {
         _parent = null;
         _archive = archive;
+    }
+
+    public ReadOnlyArchiveFolder(IArchive archive, string id, string name)
+        : this((archive as IAsyncArchive) ?? throw new ArgumentException("Archive must implement IAsyncArchive.", nameof(archive)), id, name)
+    {
     }
 
     public ReadOnlyArchiveFolder(IFile sourceFile)
@@ -133,11 +135,9 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     {
         _parent = parent;
         
-        // Try to find the directory entry for this subfolder
-        // The key for this folder (e.g., "subfolder/") may have an explicit entry
-        if (parent._archive != null)
+        if (parent._archive is IArchive archive)
         {
-            _directoryEntry = parent._archive.Entries.FirstOrDefault(e => 
+            _directoryEntry = archive.Entries.FirstOrDefault(e => 
                 e.Key == _key || e.Key == _key.TrimEnd(ZIP_DIRECTORY_SEPARATOR));
         }
     }
@@ -157,6 +157,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
             throw new ArgumentOutOfRangeException(nameof(type), $"{nameof(StorableType)}.{type} is not valid here.");
 
         var archive = await OpenArchiveAsync(cancellationToken);
+        var syncArchive = archive as IArchive ?? throw new InvalidOperationException("Archive does not expose synchronous entry enumeration.");
 
         if (type.HasFlag(StorableType.Folder))
         {
@@ -172,7 +173,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
         if (type.HasFlag(StorableType.File))
         {
-            foreach (var entry in archive.Entries)
+            foreach (var entry in syncArchive.Entries)
             {
                 // Only look at children of this current folder
                 if (entry.Key is null || !IsChild(entry.Key, _key) || IsDirectory(entry))
@@ -190,7 +191,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         var key = GetKey(id);
         _archive = await OpenArchiveAsync(cancellationToken);
 
-        IArchiveEntry? entry = _archive.Entries.FirstOrDefault(e => e.Key == key);
+        IArchiveEntry? entry = (_archive as IArchive)?.Entries.FirstOrDefault(e => e.Key == key);
 
         if (entry is null)
         {
@@ -250,15 +251,16 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
 
         _subfolders = [];
         _archive = await OpenArchiveAsync(cancellationToken);
+        var syncArchive = _archive as IArchive ?? throw new InvalidOperationException("Archive does not expose synchronous entry enumeration.");
 
-        foreach (var entry in _archive.Entries)
+        foreach (var entry in syncArchive.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             if (entry.Key is null || !entry.Key.StartsWith(_key))
                 continue;
 
-            var relativeKey = entry.Key.Remove(0, _key.Length);
+            var relativeKey = entry.Key[_key.Length..];
             int subfolderNameLength = relativeKey.IndexOf(ZIP_DIRECTORY_SEPARATOR);
             if (subfolderNameLength <= 0)
                 continue;
@@ -275,7 +277,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
         return _subfolders;
     }
 
-    public virtual async Task<IArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<IAsyncArchive> OpenArchiveAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -300,9 +302,11 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 // Fallback to memory-based backing stream (read-only scenario)
                 rewindableStream = new LazySeekStream(archiveStream);
             }
-            
-            rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length);
-            rewindableStream.Position = 0;
+
+            rewindableStream = new LengthOverrideStream(rewindableStream, archiveStream.Length)
+            {
+                Position = 0
+            };
 
             if (GZipArchive.IsGZipFile(rewindableStream))
             {
@@ -315,9 +319,10 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 // 20x covers pathological cases (95% compression) while ensuring minimum TAR detection size
                 long estimatedLength = Math.Max(archiveStream.Length * 20, 1024);
                 rewindableStream = new LengthOverrideStream(rewindableStream, estimatedLength);
-                rewindableStream = new LazySeekStream(rewindableStream);
-
-                rewindableStream.Position = 0;
+                rewindableStream = new LazySeekStream(rewindableStream)
+                {
+                    Position = 0
+                };
             }
 
             // final stream handed to SharpCompress
@@ -372,7 +377,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 var tarFactory = allFactories.FirstOrDefault(f => f.GetType().Name.Contains("Tar"));
                 if (tarFactory != null)
                 {
-                    orderedFactories = new[] { tarFactory }.Concat(allFactories.Where(f => f != tarFactory)).ToList();
+                    orderedFactories = [tarFactory, ..allFactories.Where(f => f != tarFactory)];
                 }
             }
 
@@ -382,7 +387,7 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
                 if (factory.IsArchive(rewindableStream, options.Password))
                 {
                     rewindableStream.Position = 0;
-                    _archive = factory.Open(rewindableStream, options);
+                    _archive = await factory.OpenAsyncArchive(rewindableStream, options, cancellationToken);
                     break;
                 }
 
@@ -462,18 +467,25 @@ public class ReadOnlyArchiveFolder : IFolder, IChildFolder, IGetItem, IGetFirstB
     /// <inheritdoc />
     public void Dispose()
     {
-        // Dispose archive first (may flush internal state)
-        _archive?.Dispose();
+        if (_archive is IDisposable disposableArchive)
+        {
+            disposableArchive.Dispose();
+        }
+        else if (_archive is IAsyncDisposable asyncDisposableArchive)
+        {
+            asyncDisposableArchive.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+
         _archive = null;
 
         if (_ownsStreams)
         {
-            // Disposing the top-most composite stream (LazySeekStream/GZip/LengthOverride chain)
-            // will cascade disposal to all inner wrapped streams including the original file stream.
             try { _compositeStream?.Dispose(); } catch { }
         }
 
         _compositeStream = null;
         _rootStream = null;
+
+        GC.SuppressFinalize(this);
     }
 }

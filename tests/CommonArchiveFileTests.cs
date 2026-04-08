@@ -4,7 +4,7 @@ namespace OwlCore.Storage.SharpCompress.Tests;
 
 public abstract class CommonArchiveFileTests : CommonIFileTests
 {
-    protected abstract IWritableArchive CreateArchive();
+    protected abstract IWritableAsyncArchive CreateArchive();
 
     /// <summary>
     /// Archive format timestamps may or may not be available depending on the format.

@@ -1,4 +1,7 @@
 ﻿using SharpCompress.Archives;
+using SharpCompress.Archives.GZip;
+using SharpCompress.Archives.Tar;
+using SCZipArchive = SharpCompress.Archives.Zip.ZipArchive;
 using System;
 using System.IO;
 using System.IO.Compression;
@@ -14,7 +17,12 @@ namespace OwlCore.Storage.SharpCompress;
 
 public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushable
 {
-    public ArchiveFolder(IArchive archive, string id, string name) : base(archive, id, name)
+    public ArchiveFolder(IWritableAsyncArchive<WriterOptions> archive, string id, string name) : base(archive, id, name)
+    {
+    }
+
+    public ArchiveFolder(IWritableArchive archive, string id, string name)
+        : base((archive as IArchive) ?? throw new ArgumentException("Archive must implement IArchive.", nameof(archive)), id, name)
     {
     }
 
@@ -95,8 +103,9 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         var id = Id + name;
         var key = GetKey(id);
         var archive = await OpenWritableArchiveAsync(cancellationToken);
+        var writableArchive = archive as IWritableArchive ?? throw new IOException($"Archive '{Name}' ({Id}) is not writable.");
 
-        var entry = archive.Entries.FirstOrDefault(e => e.Key == key);
+        var entry = writableArchive.Entries.FirstOrDefault(e => e.Key == key);
         if (entry is not null)
         {
             if (!overwrite && entry.IsDirectory)
@@ -104,12 +113,12 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
 
             if (overwrite)
             {
-                archive.RemoveEntry(entry);
+                writableArchive.RemoveEntry(entry);
                 entry = null;
             }
         }
 
-        entry ??= archive.AddEntry(key, new MemoryStream(), false);
+        entry ??= writableArchive.AddEntry(key, new MemoryStream(), false);
 
         return new ArchiveFile(entry, this, id, name);
     }
@@ -120,15 +129,13 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Remove this and all child entries from archive.
-        // Force enumeration with .ToList() since we're modifying the collection.
         var archive = await OpenWritableArchiveAsync(cancellationToken);
-        var entries = archive.Entries.ToList();
+        var writableArchive = archive as IWritableArchive ?? throw new IOException($"Archive '{Name}' ({Id}) is not writable.");
+        var entries = writableArchive.Entries.ToList();
         foreach (var entry in entries)
             if (entry.Key != null && (entry.Key == key || IsChild(entry.Key, key)))
-                archive.RemoveEntry(entry);
+                writableArchive.RemoveEntry(entry);
 
-        // Remove subfolder entry if one exists
         var subfolders = await GetSubfoldersAsync(cancellationToken);
         subfolders.Remove(key);
     }
@@ -138,7 +145,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         cancellationToken.ThrowIfCancellationRequested();
 
         var archive = await OpenWritableArchiveAsync(cancellationToken);
-        archive.AddEntry(key, new MemoryStream(), false);
+        var writableArchive = archive as IWritableArchive ?? throw new IOException($"Archive '{Name}' ({Id}) is not writable.");
+        writableArchive.AddEntry(key, new MemoryStream(), false);
 
         ArchiveFolder folder = new(this, name);
 
@@ -148,11 +156,11 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         return folder;
     }
 
-    protected async Task<IWritableArchive> OpenWritableArchiveAsync(CancellationToken cancellationToken = default)
+    protected async Task<IWritableAsyncArchive> OpenWritableArchiveAsync(CancellationToken cancellationToken = default)
     {
         var archive = await OpenArchiveAsync(cancellationToken);
 
-        if (archive is not IWritableArchive writableArchive)
+        if (archive is not IWritableAsyncArchive writableArchive)
             throw new IOException($"Archive '{Name}' ({Id}) is not writable.");
 
         return writableArchive;
@@ -170,18 +178,15 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         if (!CanFlush())
             throw new InvalidOperationException($"Only {nameof(ArchiveFolder)}s created from files can be flushed.");
 
-        // Get the already-loaded writable archive (contains all our changes in memory)
         var archive = await OpenWritableArchiveAsync(cancellationToken);
+        var writableArchive = archive as IWritableAsyncArchive<WriterOptions> ?? throw new InvalidOperationException($"Archive '{Name}' ({Id}) does not expose synchronous save operations.");
 
-        // If we don't have a composite stream (e.g. if we constructed from IArchive instead of IFile),
-        // we can't flush because we don't own the underlying file
         if (CompositeStream == null || SourceFile == null)
         {
             throw new InvalidOperationException($"Cannot flush {nameof(ArchiveFolder)} that was not created from a file.");
         }
 
-        // Save archive changes to backing stream before disposal
-        if (BackingStream != null && archive is IWritableArchive writableArchive)
+        if (BackingStream != null)
         {
             BackingStream.Position = 0;
             BackingStream.SetLength(0);
@@ -196,8 +201,8 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
                 // CRITICAL: GZipStream must be disposed to write GZIP footer properly
                 using (var gzipStream = new GZipStream(BackingStream, CompressionMode.Compress, leaveOpen: true))
                 {
-                    writableArchive.SaveTo(gzipStream, new WriterOptions(CompressionType.None));
-                    gzipStream.Flush();
+                    await writableArchive.SaveToAsync(gzipStream, new WriterOptions(CompressionType.None), cancellationToken);
+                    await gzipStream.FlushAsync(cancellationToken);
                 } // GZipStream disposal writes the footer and finalizes the GZIP file
             }
             else
@@ -210,16 +215,20 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
                     _ => CompressionType.None
                 };
                 
-                writableArchive.SaveTo(BackingStream, new WriterOptions(compressionType));
+                await writableArchive.SaveToAsync(BackingStream, new WriterOptions(compressionType), cancellationToken);
             }
             
-            BackingStream.Flush();
+            await BackingStream.FlushAsync(cancellationToken);
         }
 
         // CRITICAL: Dispose existing streams to release file handles before writing
         // This triggers our disposal delegate which flushes the backing stream to the file
         Guard.IsNotNull(RootStream);
-        RootStream.Dispose();
+        if (RootStream is IAsyncDisposable asyncDisposableRootStream)
+            await asyncDisposableRootStream.DisposeAsync();
+        else
+            RootStream.Dispose();
+
         base.Dispose();
     }
 
@@ -237,14 +246,14 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// <returns>
     /// The opened <see cref="IFolder"/>, or an <see cref="IModifiableFolder"/> if archive is writable.
     /// </returns>
-    public static ReadOnlyArchiveFolder Open(Stream stream, string id, string name)
+    public static async Task<ReadOnlyArchiveFolder> OpenAsync(Stream stream, string id, string name)
     {
-        var archive = ArchiveFactory.Open(stream);
+        var archive = await ArchiveFactory.OpenAsyncArchive(stream);
 
-        if (stream.CanWrite && archive is IWritableArchive writableArchive)
+        if (stream.CanWrite && archive is IWritableAsyncArchive<WriterOptions> writableArchive)
             return new ArchiveFolder(writableArchive, id, name);
 
-        return new ReadOnlyArchiveFolder(archive, id, name);
+        return new ReadOnlyArchiveFolder((IAsyncArchive)archive, id, name);
     }
 
     /// <summary>
@@ -272,7 +281,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
         ArchiveType archiveType, CancellationToken cancellationToken)
     {
         var archiveFile = await parentFolder.CreateFileAsync(name, overwrite: true, cancellationToken);
-        var archive = ArchiveFactory.Create(archiveType);
+        var archive = ArchiveFactory.CreateArchive<WriterOptions>();
 
         await FlushToAsync(archiveFile, archive, cancellationToken);
 
@@ -304,7 +313,7 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// </remarks>
     public static async Task<IFile> CreateArchiveAsync(IFile archiveFile, ArchiveType archiveType, CancellationToken cancellationToken)
     {
-        var archive = ArchiveFactory.Create(archiveType);
+        var archive = ArchiveFactory.CreateArchive<WriterOptions>();
         await FlushToAsync(archiveFile, archive, cancellationToken);
         return archiveFile;
     }
@@ -315,39 +324,73 @@ public class ArchiveFolder : ReadOnlyArchiveFolder, IModifiableFolder, IFlushabl
     /// <param name="archiveFile">The file to save the archive to.</param>
     /// <param name="archive">The archive to save.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
-    public static async Task FlushToAsync(IFile archiveFile, IWritableArchive archive, CancellationToken cancellationToken)
+    public static async Task FlushToAsync(IFile archiveFile, IWritableAsyncArchive archive, CancellationToken cancellationToken)
+    {
+        var writableArchive = archive as IWritableAsyncArchive<WriterOptions> ?? throw new InvalidOperationException("Archive does not expose asynchronous save operations.");
+
+        using var archiveFileStream = await archiveFile.OpenReadWriteAsync(cancellationToken);
+        Guard.IsEqualTo(archiveFileStream.Position, 0);
+
+        var fileName = archiveFile.Name;
+
+        if (fileName.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+        {
+            using (var gzipStream = new GZipStream(archiveFileStream, CompressionMode.Compress, leaveOpen: true))
+            {
+                await writableArchive.SaveToAsync(gzipStream, new WriterOptions(CompressionType.None), cancellationToken);
+                await gzipStream.FlushAsync(cancellationToken);
+            }
+        }
+        else
+        {
+            var compressionType = archive.Type switch
+            {
+                ArchiveType.Zip => CompressionType.Deflate,
+                ArchiveType.Tar => CompressionType.None,
+                _ => CompressionType.None
+            };
+
+            await writableArchive.SaveToAsync(archiveFileStream, new WriterOptions(compressionType), cancellationToken);
+        }
+
+        await archiveFileStream.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes an archive to the supplied file.
+    /// </summary>
+    /// <param name="archiveFile">The file to save the archive to.</param>
+    /// <param name="archive">The archive to save.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the ongoing operation.</param>
+    public static async Task FlushToAsync(IFile archiveFile, IWritableArchive<WriterOptions> archive, CancellationToken cancellationToken)
     {
         using var archiveFileStream = await archiveFile.OpenReadWriteAsync(cancellationToken);
         Guard.IsEqualTo(archiveFileStream.Position, 0);
 
         var fileName = archiveFile.Name;
 
-        // Handle layered formats (.tar.gz/.tgz) - stream directly to avoid memory issues
         if (fileName.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ||
             fileName.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
         {
-            // Stream directly to GZip without using MemoryStream for large file support
-            // CRITICAL: GZipStream must be disposed to write GZIP footer properly
             using (var gzipStream = new GZipStream(archiveFileStream, CompressionMode.Compress, leaveOpen: true))
             {
                 archive.SaveTo(gzipStream, new WriterOptions(CompressionType.None));
                 await gzipStream.FlushAsync(cancellationToken);
-            } // GZipStream disposal writes the footer and finalizes the GZIP file
+            }
         }
         else
         {
-            // Single-layer formats
             var compressionType = archive.Type switch
             {
                 ArchiveType.Zip => CompressionType.Deflate,
                 ArchiveType.Tar => CompressionType.None,
-                _ => CompressionType.None // Default fallback
+                _ => CompressionType.None
             };
 
             archive.SaveTo(archiveFileStream, new WriterOptions(compressionType));
         }
 
-        // Ensure the data is actually written to the underlying storage
         await archiveFileStream.FlushAsync(cancellationToken);
     }
 }

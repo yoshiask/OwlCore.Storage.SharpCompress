@@ -4,9 +4,7 @@ namespace OwlCore.Storage.SharpCompress.Tests;
 
 public abstract class CommonArchiveFolderTests : CommonIModifiableFolderTests
 {
-    // Required for base class to perform common tests.
-
-    protected abstract IWritableArchive CreateArchive();
+    protected abstract IWritableAsyncArchive CreateArchive();
 
     /// <summary>
     /// Archive folder timestamps may be null for implicit folders (no explicit directory entry)

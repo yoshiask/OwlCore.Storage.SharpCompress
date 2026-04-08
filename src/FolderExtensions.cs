@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using SharpCompress.Archives;
 using SharpCompress.Common;
+using SharpCompress.Writers;
 
 namespace OwlCore.Storage.SharpCompress;
 
@@ -14,8 +15,15 @@ public static class FolderExtensions
         return await ArchiveFolder.CreateArchiveAsync(parentFolder, name, archiveType, cancellationToken);
     }
     
-    /// <inheritdoc cref="ArchiveFolder.FlushToAsync"/>
-    public static async Task FlushToAsync(this IWritableArchive archive, IFile archiveFile,
+    /// <inheritdoc cref="ArchiveFolder.FlushToAsync(IFile, IWritableAsyncArchive, CancellationToken)"/>
+    public static async Task FlushToAsync(this IWritableAsyncArchive archive, IFile archiveFile,
+        CancellationToken cancellationToken = default)
+    {
+        await ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);
+    }
+
+    /// <inheritdoc cref="ArchiveFolder.FlushToAsync(IFile, IWritableArchive{WriterOptions}, CancellationToken)"/>
+    public static async Task FlushToAsync(this IWritableArchive<WriterOptions> archive, IFile archiveFile,
         CancellationToken cancellationToken = default)
     {
         await ArchiveFolder.FlushToAsync(archiveFile, archive, cancellationToken);

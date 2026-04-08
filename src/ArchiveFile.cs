@@ -76,19 +76,18 @@ public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccesse
         => Task.FromResult<IFolder?>(_parent);
 
     /// <inheritdoc/>
-    public Task<Stream> OpenStreamAsync(FileAccess accessMode = FileAccess.Read, CancellationToken cancellationToken = default)
+    public async Task<Stream> OpenStreamAsync(FileAccess accessMode = FileAccess.Read, CancellationToken cancellationToken = default)
     {
         if (accessMode == 0 || (int)accessMode > 3)
             throw new ArgumentOutOfRangeException(nameof(accessMode));
 
-        var stream = _entry.OpenEntryStream();
-        cancellationToken.ThrowIfCancellationRequested();
+        var stream = await _entry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
 
         if (accessMode.HasFlag(FileAccess.Read) && !stream.CanRead)
             throw new NotSupportedException();
         if (accessMode.HasFlag(FileAccess.Write) && !stream.CanWrite)
             throw new NotSupportedException();
 
-        return Task.FromResult(stream);
+        return stream;
     }
 }
