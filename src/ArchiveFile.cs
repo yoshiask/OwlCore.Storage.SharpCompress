@@ -122,7 +122,7 @@ public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccesse
     {
         try
         {
-            return _entry.OpenEntryStream();
+            return await _entry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (NotImplementedException)
         {
@@ -130,14 +130,7 @@ public class ArchiveFile : IChildFile, ICreatedAt, ILastModifiedAt, ILastAccesse
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        try
-        {
-            return await _entry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (NotImplementedException)
-        {
-            throw new NotSupportedException();
-        }
+        return _entry.OpenEntryStream();
     }
 
     private async Task ReplaceEntryContentAsync(byte[] content, CancellationToken cancellationToken)
